@@ -66,6 +66,8 @@ internal/mode/       chooses public / IPv6 / mesh access from probe results
 internal/dynu/       Dynu v2 API client
 internal/portmap/    UPnP IGD port mapping with permanent-lease verification
 internal/routerguide/ per-router forwarding instructions from routers.json
+internal/reach/      external reachability checks (reachable / unreachable / inconclusive)
+internal/dnswait/    waits for records on authoritative nameservers before ACME
 ```
 
 ### Live API tests
@@ -101,7 +103,7 @@ Task numbers refer to [SPEC.md §18](SPEC.md#18-implementation-tasks).
 - [x] **4** — Mode router
 - [x] **5** — Port mapper and router instruction guide
 - [ ] **6** — Caddy service installer
-- [ ] **7** — DNS propagation waiter
+- [x] **7** — DNS propagation waiter
 - [ ] **8** — Jellyfin configuration client
 - [ ] **9** — Wizard UI
 - [ ] **10** — Installer and service registration
