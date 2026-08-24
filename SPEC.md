@@ -417,7 +417,32 @@ The legacy `/nic/update` endpoint uses HTTP Basic auth and **cannot create a hos
 | Add record | `POST /dns/{id}/record` | Used for DNS-01 TXT |
 | Delete record | `DELETE /dns/{id}/record/{recordId}` | TXT cleanup |
 
-> ⚠️ Endpoint paths and the `API-Key` header are confirmed against the libdns provider Caddy uses. The **exact JSON field names** for the address-update payload are not — Dynu's OpenAPI document requires auth to fetch. Pull it with a real key and generate the client rather than hand-writing structs.
+### Verified schema
+
+✅ **Resolved 2026-08-24 against a live account.** Dynu publishes no reachable OpenAPI document — `/v2/swagger.json`, `/v2/openapi.json` and the other documented locations all return 404 — so the field names below were read from live responses instead. That is stronger evidence than a spec document anyway.
+
+```
+GET /v2/dns                    -> {statusCode, domains: [Domain]}
+GET /v2/dns/{id}               -> {statusCode, ...Domain}   (flattened, not nested)
+GET /v2/dns/{id}/record        -> {statusCode, dnsRecords: [Record]}
+GET /v2/dns/getroot/{hostname} -> {statusCode, id, domainName, hostname, node}
+```
+
+**Domain:** `id`, `name`, `unicodeName`, `token`, `state`, `group`, `ipv4Address`, `ipv6Address`, `ttl`, `ipv4`, `ipv6`, `ipv4WildcardAlias`, `ipv6WildcardAlias`, `createdOn`, `updatedOn`
+
+**Record:** `id`, `domainId`, `domainName`, `nodeName`, `hostname`, `recordType`, `ttl`, `state`, `content`, `updatedOn` (plus SOA-only fields)
+
+Three findings that change the implementation:
+
+> 🔴 **A DDNS hostname is its own zone apex.** `getroot` for `mymedia.freeddns.org` does **not** return `domainName: "freeddns.org", node: "mymedia"`. It returns `domainName: "mymedia.freeddns.org"` with an **empty** `node`. In Dynu's model the user's hostname *is* their zone; the shared parent belongs to Dynu.
+>
+> Consequences: DNS-01 TXT records use `nodeName: "_acme-challenge"` relative to that zone, **and the PSL allowlist check in §8 must not use `getroot`'s answer** — it returns the full hostname, so the check would compare the wrong string. Derive the parent from the name instead. This is the same ambiguity that `caddy-dns/dynu` exposes as `own_domain`, which will need setting in the generated Caddyfile (task 6).
+
+> 🔴 **Every `Domain` carries a `token` field** — a per-hostname secret for the legacy update protocol. It arrives unprompted in ordinary list responses, so it must be registered for redaction the moment it is seen or any code path logging a `Domain` leaks it.
+
+> ⚠️ **Errors can arrive inside an HTTP 200**, carried in the body's `statusCode`. Both must be checked. An unknown hostname returns `501 Argument Exception`, not `404`.
+
+The `ipv4` and `ipv6` booleans control whether each family is published at all — setting `ipv6Address` without `ipv6: true` does nothing, which is a quiet way to lose Mode A6.
 
 ### IPv6 is not optional
 
@@ -679,7 +704,8 @@ Single static binaries per platform keep the installer simple; the UPnP, DNS, an
 
 ### Still to verify
 
-- **Dynu address-field names** — pull the authenticated OpenAPI document and generate the client.
+- ~~**Dynu address-field names**~~ — ✅ resolved 2026-08-24; see §12. No OpenAPI document exists, so the schema was captured from live responses.
+- **Dynu write endpoints** — `POST /dns`, `POST /dns/{id}` and `POST /dns/{id}/record` are implemented from the shapes the read endpoints return, but have not been exercised against a live account, since doing so creates real records. Confirm on a throwaway hostname before task 6.
 - **Jellyfin configuration keys at 10.11.5** — confirm against the running server's own OpenAPI document.
 - **Permanent UPnP lease support** — how many common routers honour lease duration `0`.
 - **Clipboard-watch behaviour in the webview** per platform.

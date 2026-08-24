@@ -61,6 +61,21 @@ internal/rasaerr/    typed errors: user-facing copy separated from technical det
 internal/state/      resumable setup state machine and its persistence
 internal/secrets/    credential storage (DPAPI on Windows, 0600 file on Linux)
 internal/paths/      where logs, state and credentials live
+internal/probe/      what pre-flight observes (types; probing is task 3)
+internal/mode/       chooses public / IPv6 / mesh access from probe results
+internal/dynu/       Dynu v2 API client
+```
+
+### Live API tests
+
+`go test ./...` is hermetic and needs no network. The Dynu package also has
+opt-in read-only tests against the real API, which exist because fixtures can
+only prove RASA parses what it was told to expect — they cannot notice Dynu
+changing a field name:
+
+```sh
+# put your key in .devdata/dynu-key.txt (gitignored), then:
+RASA_LIVE_DYNU=1 go test ./internal/dynu/ -run Live -v
 ```
 
 ### Where RASA puts things
@@ -79,9 +94,9 @@ Task numbers refer to [SPEC.md §18](SPEC.md#18-implementation-tasks).
 
 - [x] **1** — Project skeleton, state store, structured logging with tested redaction
 - [x] **1b** — Error catalogue with user-facing copy
-- [ ] **2** — Dynu v2 API client
+- [x] **2** — Dynu v2 API client
 - [ ] **3** — Probe suite (Jellyfin discovery, public IP, CGNAT detection)
-- [ ] **4** — Mode router
+- [x] **4** — Mode router
 - [ ] **5** — Port mapper and router instruction guide
 - [ ] **6** — Caddy service installer
 - [ ] **7** — DNS propagation waiter
