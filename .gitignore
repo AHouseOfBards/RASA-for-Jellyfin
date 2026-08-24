@@ -1,13 +1,15 @@
-# Build output
+# Build output.
+# These must stay anchored with a leading slash: a bare "rasa" would also
+# match the cmd/rasa/ source directory and silently drop it from the repo.
 /bin/
 /dist/
-rasa
-rasa.exe
+/rasa
+/rasa.exe
 
-# Bundled Caddy binary, produced by xcaddy in CI — never committed
+# Bundled Caddy binary, produced by xcaddy in CI — never committed.
 /third_party/caddy/
-caddy
-caddy.exe
+/caddy
+/caddy.exe
 
 # Go
 *.test
