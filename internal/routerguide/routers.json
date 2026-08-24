@@ -1,0 +1,132 @@
+{
+  "_comment": [
+    "Router port-forwarding instructions. Adding a router is a pull request, not a release.",
+    "",
+    "Matching is tried in this order, most reliable first:",
+    "  vendor  - substring of the manufacturer the router reports over UPnP. Most reliable.",
+    "  banner  - substring of the gateway admin page title or Server header. Used when UPnP is off.",
+    "  oui     - first three octets of the gateway MAC, lowercase colon-separated. Works when",
+    "            the router answers nothing at all, but only identifies the vendor.",
+    "",
+    "OUI lists are sparse on purpose: a wrong prefix produces confidently wrong instructions,",
+    "which is worse than the generic fallback. Only add prefixes you have verified on hardware.",
+    "",
+    "Menu paths vary by firmware version. Keep 'note' for the step people actually get stuck on."
+  ],
+
+  "asus": {
+    "name": "ASUS",
+    "match": {
+      "vendor": ["ASUS", "ASUSTeK"],
+      "banner": ["ASUS"]
+    },
+    "path": "WAN → Virtual Server / Port Forwarding",
+    "note": "Set 'Enable Port Forwarding' to Yes before the table will accept rows.",
+    "reservationPath": "LAN → DHCP Server → Manually Assigned IP around the DHCP list"
+  },
+
+  "tplink": {
+    "name": "TP-Link",
+    "match": {
+      "vendor": ["TP-LINK", "TP-Link"],
+      "banner": ["TP-Link", "Archer"]
+    },
+    "path": "Advanced → NAT Forwarding → Virtual Servers",
+    "note": "Some Archer firmware calls this 'Port Forwarding' instead of 'Virtual Servers'.",
+    "reservationPath": "Advanced → Network → DHCP Server → Address Reservation"
+  },
+
+  "netgear": {
+    "name": "NETGEAR",
+    "match": {
+      "vendor": ["NETGEAR"],
+      "banner": ["NETGEAR"]
+    },
+    "path": "Advanced → Advanced Setup → Port Forwarding / Port Triggering",
+    "note": "Choose 'Port Forwarding' rather than 'Port Triggering' — they are different features.",
+    "reservationPath": "Advanced → Setup → LAN Setup → Address Reservation"
+  },
+
+  "fritzbox": {
+    "name": "FRITZ!Box",
+    "match": {
+      "vendor": ["AVM"],
+      "banner": ["FRITZ!Box", "FRITZ"]
+    },
+    "path": "Internet → Permit Access → Port Sharing",
+    "note": "Turn on the Advanced View first, or Port Sharing is hidden.",
+    "reservationPath": "Home Network → Network → the device's Edit pencil → 'Always assign the same IPv4 address'"
+  },
+
+  "linksys": {
+    "name": "Linksys",
+    "match": {
+      "vendor": ["Linksys", "Cisco"],
+      "banner": ["Linksys"]
+    },
+    "path": "Security → Apps and Gaming → Single Port Forwarding",
+    "reservationPath": "Connectivity → Local Network → DHCP Reservations"
+  },
+
+  "ubiquiti": {
+    "name": "Ubiquiti UniFi",
+    "match": {
+      "vendor": ["Ubiquiti"],
+      "banner": ["UniFi", "Ubiquiti"]
+    },
+    "path": "Settings → Firewall & Security → Port Forwarding",
+    "note": "Older controllers put this under Settings → Routing & Firewall.",
+    "reservationPath": "Client Devices → the device → Settings → Fixed IP Address"
+  },
+
+  "mikrotik": {
+    "name": "MikroTik",
+    "match": {
+      "vendor": ["MikroTik"],
+      "banner": ["MikroTik", "RouterOS"]
+    },
+    "path": "IP → Firewall → NAT → add a dst-nat rule",
+    "note": "Set chain to dstnat, protocol tcp, dst-port to the port below, then action=dst-nat with the address and port below.",
+    "reservationPath": "IP → DHCP Server → Leases → make the lease static"
+  },
+
+  "synology": {
+    "name": "Synology Router",
+    "match": {
+      "vendor": ["Synology"],
+      "banner": ["Synology", "SRM"]
+    },
+    "path": "Network Center → Port Forwarding",
+    "reservationPath": "Network Center → DHCP Server → DHCP Clients → Add to reservation"
+  },
+
+  "eero": {
+    "name": "eero",
+    "match": {
+      "vendor": ["eero"],
+      "banner": ["eero"]
+    },
+    "path": "eero app → Settings → Network Settings → Reservations & Port Forwarding",
+    "note": "eero requires the mobile app; there is no web admin page.",
+    "reservationPath": "the same screen — the reservation is created alongside the forward"
+  },
+
+  "google": {
+    "name": "Google Nest Wifi",
+    "match": {
+      "vendor": ["Google"],
+      "banner": ["Google"]
+    },
+    "path": "Google Home app → Wi-Fi → Settings → Advanced networking → Port management",
+    "note": "Google Home requires a reserved address before it will offer the device for port forwarding.",
+    "reservationPath": "Advanced networking → DHCP IP reservations"
+  },
+
+  "_default": {
+    "name": "your router",
+    "match": {},
+    "path": "the section called 'Port Forwarding', 'Virtual Server', 'NAT', or 'Applications & Gaming'",
+    "note": "Menu names vary between manufacturers and firmware versions.",
+    "reservationPath": "the DHCP settings, usually called 'Address Reservation' or 'Static Lease'"
+  }
+}

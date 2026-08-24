@@ -65,6 +65,7 @@ internal/probe/      pre-flight: Jellyfin, public address, router/UPnP, ports
 internal/mode/       chooses public / IPv6 / mesh access from probe results
 internal/dynu/       Dynu v2 API client
 internal/portmap/    UPnP IGD port mapping with permanent-lease verification
+internal/routerguide/ per-router forwarding instructions from routers.json
 ```
 
 ### Live API tests
@@ -98,7 +99,7 @@ Task numbers refer to [SPEC.md §18](SPEC.md#18-implementation-tasks).
 - [x] **2** — Dynu v2 API client
 - [x] **3** — Probe suite (Jellyfin discovery, public IP, CGNAT detection)
 - [x] **4** — Mode router
-- [~] **5** — Port mapper (UPnP IGD) done; router instruction guide (`routers.json`) not started
+- [x] **5** — Port mapper and router instruction guide
 - [ ] **6** — Caddy service installer
 - [ ] **7** — DNS propagation waiter
 - [ ] **8** — Jellyfin configuration client
@@ -110,7 +111,7 @@ Task numbers refer to [SPEC.md §18](SPEC.md#18-implementation-tasks).
 
 ## Contributing
 
-Router port-forwarding instructions live in a data file rather than in code, so **adding your router is a pull request, not a release**. The same applies to the list of usable Dynu parent domains.
+Router port-forwarding instructions live in [`internal/routerguide/routers.json`](internal/routerguide/routers.json) rather than in code, so **adding your router is a pull request, not a release**. The same applies to the list of usable Dynu parent domains.
 
 Two rules worth knowing before opening a PR:
 

@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -17,7 +18,9 @@ import (
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/logging"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/mode"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/paths"
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/portmap"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/probe"
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/routerguide"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/secrets"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/state"
 )
@@ -118,6 +121,18 @@ func run(ctx context.Context, root string, verbose bool) error {
 
 	reportProbe(res, decision)
 
+	// Phase 4: open the path. Automatic where the router allows it, guided
+	// otherwise — never a dead end.
+	if !decision.Blocked() && decision.Mode != state.ModeMesh {
+		mapping, guide := openPath(ctx, log.WithPhase("portmap"), res, decision)
+		if mapping != nil {
+			st.PortMapping = mapping
+		}
+		if guide != nil {
+			fmt.Println("\n" + guide.PlainText())
+		}
+	}
+
 	if err := st.Advance(state.Probed); err != nil {
 		log.Warn("could not record probe phase", slog.Any("err", err))
 	}
@@ -134,6 +149,76 @@ func run(ctx context.Context, root string, verbose bool) error {
 	}
 	log.Info("rasa exiting", slog.String("phase", string(st.Phase)))
 	return nil
+}
+
+// openPath tries to open the router port, falling back to guided manual
+// instructions. It returns whatever mapping now exists and, when the user has
+// work to do, the instructions for it.
+//
+// A mapping that exists but is not permanent still produces instructions: the
+// lease will lapse on a reboot, and a static forward is the more durable
+// ending (SPEC.md §6).
+func openPath(ctx context.Context, log *logging.Logger, res probe.Result, d mode.Decision) (*state.PortMapping, *routerguide.Instructions) {
+	var stored *state.PortMapping
+
+	if d.NeedsPortMapping && res.Router.ControlURL != "" && res.Host.LANAddress.IsValid() {
+		m := portmap.New(res.Router.ControlURL, res.Router.ServiceType, log)
+		out, err := m.Add(ctx, portmap.Request{
+			ExternalPort:   d.ListenPort,
+			InternalPort:   d.ListenPort,
+			InternalClient: res.Host.LANAddress,
+			Protocol:       portmap.TCP,
+		})
+		switch {
+		case err != nil:
+			var ue *portmap.UPnPError
+			if errors.As(err, &ue) && ue.IsConflict() {
+				log.Warned("Your router is already sending that port to a different device.")
+			} else {
+				log.Warned("The port could not be opened automatically.")
+			}
+			log.Debug("mapping failed", slog.Any("err", err))
+		default:
+			stored = &state.PortMapping{
+				ExternalPort: out.Mapping.ExternalPort,
+				InternalPort: out.Mapping.InternalPort,
+				Method:       "upnp",
+				Permanent:    out.Mapping.Permanent(),
+				LeaseSeconds: out.Mapping.LeaseSeconds,
+			}
+			if out.Mapping.Permanent() && out.VerifiedByReadback {
+				log.OK("Port opened on your router.")
+				return stored, nil
+			}
+			log.Warned("The port was opened, but your router may clear it when it restarts.")
+		}
+	}
+
+	// Either mapping was unavailable, failed, or produced something that will
+	// not survive a reboot. All three end the same way: show the user how to
+	// make it permanent themselves.
+	cat, err := routerguide.Embedded()
+	if err != nil {
+		log.Error("router catalogue unavailable", slog.Any("err", err))
+		return stored, nil
+	}
+	entry := cat.Match(routerguide.Identity{
+		Vendor: res.Router.Vendor,
+		Model:  res.Router.Model,
+		MAC:    res.Router.MAC,
+	})
+	ins := routerguide.Build(entry, routerguide.Values{
+		Gateway:       res.Router.Gateway,
+		InternalIP:    res.Host.LANAddress,
+		Port:          d.ListenPort,
+		AddressIsDHCP: res.Host.AddressIsDHCP,
+	})
+	log.Info("rendered port forwarding guide",
+		slog.String("router", ins.RouterName),
+		slog.Bool("generic", ins.Generic),
+		slog.Bool("reservation_required", ins.ReservationRequired),
+	)
+	return stored, &ins
 }
 
 // reportProbe prints the four pre-flight lines from journey step 5, then what
