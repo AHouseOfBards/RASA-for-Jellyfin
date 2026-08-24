@@ -55,7 +55,8 @@ Requires Go 1.26 or newer. There are currently no third-party dependencies.
 ### Layout
 
 ```
-cmd/rasa/            entry point
+cmd/rasa/            setup app (disposable)
+cmd/rasa-sync/       address sync helper (stays installed)
 internal/logging/    structured logging with tested secret redaction
 internal/rasaerr/    typed errors: user-facing copy separated from technical detail
 internal/state/      resumable setup state machine and its persistence
@@ -70,6 +71,9 @@ internal/reach/      external reachability checks (reachable / unreachable / inc
 internal/dnswait/    waits for records on authoritative nameservers before ACME
 internal/jellyfin/   configures Jellyfin's network settings over its own API
 internal/caddy/      generates the proxy configuration
+internal/service/    registers the OS service and scheduled task
+internal/ddns/       keeps the published address current
+internal/recovery/   recovery file and diagnostic bundle
 ```
 
 ### Live API tests
@@ -104,14 +108,14 @@ Task numbers refer to [SPEC.md §18](SPEC.md#18-implementation-tasks).
 - [x] **3** — Probe suite (Jellyfin discovery, public IP, CGNAT detection)
 - [x] **4** — Mode router
 - [x] **5** — Port mapper and router instruction guide
-- [~] **6** — Caddyfile generator done; service installation not started
+- [x] **6** — Caddy service installer
 - [x] **7** — DNS propagation waiter
 - [x] **8** — Jellyfin configuration client
 - [ ] **9** — Wizard UI
-- [ ] **10** — Installer and service registration
-- [ ] **11** — Scheduled task installer
-- [ ] **12** — State file and repair mode
-- [ ] **13** — Diagnostic bundle and recovery file
+- [~] **10** — Packaging inputs written; installers not built
+- [x] **11** — Scheduled task installer
+- [~] **12** — State file done; repair flow needs the wizard
+- [x] **13** — Diagnostic bundle and recovery file
 
 ## Contributing
 

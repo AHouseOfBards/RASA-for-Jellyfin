@@ -1,0 +1,39 @@
+# The Docker deliverable is a stack, not an installer (SPEC.md 17).
+#
+# host networking is required, not merely recommended: inside a bridge network
+# 127.0.0.1 is the container's loopback rather than the host's Jellyfin, and
+# SSDP multicast for router discovery does not cross the bridge at all.
+services:
+  rasa-caddy:
+    image: ghcr.io/ahouseofbards/rasa-caddy:latest
+    container_name: rasa-caddy
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      # Supplied via a .env file or a secret. Never inline it here - this file
+      # ends up committed to people's repositories.
+      RASA_DYNU_TOKEN: ${RASA_DYNU_TOKEN:?set RASA_DYNU_TOKEN in a .env file}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data      # certificates live here; losing it means re-issuing
+      - caddy-config:/config
+      - ./logs:/var/log/rasa
+
+  rasa-sync:
+    image: ghcr.io/ahouseofbards/rasa-sync:latest
+    container_name: rasa-sync
+    network_mode: host
+    restart: unless-stopped
+    # No cron or Task Scheduler in a container, so the helper runs its own
+    # loop instead of being scheduled. Same binary, different mode.
+    command: ["--interval", "10m"]
+    environment:
+      RASA_DYNU_TOKEN: ${RASA_DYNU_TOKEN:?set RASA_DYNU_TOKEN in a .env file}
+    volumes:
+      - rasa-state:/var/lib/rasa
+      - ./logs:/var/log/rasa
+
+volumes:
+  caddy-data:
+  caddy-config:
+  rasa-state:

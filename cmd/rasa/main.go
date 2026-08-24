@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"runtime"
 
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/logging"
@@ -20,8 +21,10 @@ import (
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/paths"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/portmap"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/probe"
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/recovery"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/routerguide"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/secrets"
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/service"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/state"
 )
 
@@ -33,11 +36,21 @@ func main() {
 		root    = flag.String("root", "", "override the data directory (development use; default is the system location)")
 		verbose = flag.Bool("v", false, "log at debug level")
 		showVer = flag.Bool("version", false, "print version and exit")
+		diag    = flag.Bool("diagnostics", false, "write a redacted diagnostic bundle and exit")
+		withAdr = flag.Bool("include-address", false, "include your web address in the diagnostic bundle")
 	)
 	flag.Parse()
 
 	if *showVer {
 		fmt.Printf("RASA for Jellyfin %s (%s/%s)\n", version, runtime.GOOS, runtime.GOARCH)
+		return
+	}
+
+	if *diag {
+		if err := runDiagnostics(*root, *withAdr); err != nil {
+			fmt.Fprintln(os.Stderr, "rasa:", err)
+			os.Exit(1)
+		}
 		return
 	}
 
@@ -123,13 +136,17 @@ func run(ctx context.Context, root string, verbose bool) error {
 
 	// Phase 4: open the path. Automatic where the router allows it, guided
 	// otherwise — never a dead end.
+	var guideText string
 	if !decision.Blocked() && decision.Mode != state.ModeMesh {
 		mapping, guide := openPath(ctx, log.WithPhase("portmap"), res, decision)
 		if mapping != nil {
 			st.PortMapping = mapping
 		}
 		if guide != nil {
-			fmt.Println("\n" + guide.PlainText())
+			// Kept for the recovery file: the user will need these values
+			// again if they replace or reset their router.
+			guideText = guide.PlainText()
+			fmt.Println("\n" + guideText)
 		}
 	}
 
@@ -144,11 +161,61 @@ func run(ctx context.Context, root string, verbose bool) error {
 		st.AddWarning(w.Code, w.Text)
 	}
 
+	// Task 13: the two artifacts that outlive RASA. Written on every run,
+	// including a failed one — a partially configured machine is exactly when
+	// the recovery file matters most.
+	rec := recovery.Info{
+		State:            st,
+		Layout:           layout,
+		ServiceMechanism: service.Describe(),
+		Version:          version,
+	}
+	if guideText != "" {
+		rec.ForwardingText = guideText
+	}
+	if err := recovery.WriteFile(rec); err != nil {
+		log.Warn("could not write the recovery file", slog.Any("err", err))
+	}
+
 	if err := store.Save(st); err != nil {
 		return fmt.Errorf("saving state: %w", err)
 	}
 	log.Info("rasa exiting", slog.String("phase", string(st.Phase)))
+	fmt.Printf("\nDetails saved to %s\n", layout.RecoveryFile())
 	return nil
+}
+
+// bundle produces a diagnostic zip on the desktop, or the working directory
+// when there is no desktop. Task 13.
+//
+// Reachable from a re-run because RASA may already have been uninstalled when
+// it is needed.
+func bundle(layout paths.Layout, log *logging.Logger, includeAddresses bool) error {
+	dest, err := os.UserHomeDir()
+	if err != nil {
+		dest = "."
+	} else if d := filepath.Join(dest, "Desktop"); dirExists(d) {
+		dest = d
+	}
+
+	path, err := recovery.WriteBundle(dest, recovery.BundleOptions{
+		Layout:           layout,
+		Redactor:         log.Redactor(),
+		IncludeAddresses: includeAddresses,
+		Version:          version,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("\nDiagnostics saved to:\n  %s\n\n", path)
+	fmt.Println("Attach it to an issue at:")
+	fmt.Println("  https://github.com/AHouseOfBards/RASA-for-Jellyfin/issues")
+	return nil
+}
+
+func dirExists(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
 }
 
 // openPath tries to open the router port, falling back to guided manual
@@ -274,4 +341,28 @@ func report(layout paths.Layout, creds *secrets.FileStore, st *state.State, name
 	} else {
 		fmt.Println("Setup has not completed. The wizard is not implemented yet (task 9).")
 	}
+}
+
+// runDiagnostics writes a bundle without performing setup, so it works after
+// RASA has been reinstalled purely to collect one.
+func runDiagnostics(root string, includeAddresses bool) error {
+	layout := paths.Default()
+	if root != "" {
+		layout = paths.UnderRoot(root)
+	}
+	log, err := logging.Open(layout.RASALog(), logging.Options{})
+	if err != nil {
+		return err
+	}
+	defer log.Close()
+
+	// Register the stored credential so it cannot survive into the bundle even
+	// though this path never otherwise reads it.
+	if tok, err := secrets.NewFileStore(layout.SecretFile()).Get(secrets.DynuAPIKey); err == nil {
+		log.Redactor().RegisterSecret(tok)
+	}
+	if st, err := state.NewStore(layout.StateFile()).Load(); err == nil && st.Hostname != "" {
+		log.Redactor().RegisterAddress(st.Hostname)
+	}
+	return bundle(layout, log, includeAddresses)
 }
