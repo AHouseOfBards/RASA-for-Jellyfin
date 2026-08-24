@@ -24,6 +24,24 @@ const (
 	CodeBlockedParentDomain Code = "blocked_parent_domain"
 	CodeDynuAuth            Code = "dynu_auth_rejected"
 	CodeNoRouteToInternet   Code = "no_route_to_internet"
+	CodeInvalidHostname     Code = "invalid_hostname"
+)
+
+// HostnameProblem is why a name was refused before RASA tried to claim it.
+//
+// The enum exists so that the copy for each case lives here with the rest of
+// the catalogue rather than being assembled at the call site. Validation runs
+// on every keystroke, so these strings are read more often than any other
+// message in the product.
+type HostnameProblem string
+
+const (
+	HostnameEmpty          HostnameProblem = "empty"
+	HostnameTooShort       HostnameProblem = "too_short"
+	HostnameTooLong        HostnameProblem = "too_long"
+	HostnameBadCharacters  HostnameProblem = "bad_characters"
+	HostnameEdgeHyphen     HostnameProblem = "edge_hyphen"
+	HostnameReservedPrefix HostnameProblem = "reserved_prefix"
 )
 
 // ACMERateLimited is returned when Let's Encrypt declines to issue because the
@@ -208,4 +226,40 @@ func NoRouteToInternet(cause error) *Error {
 		Detail:  "public address resolution failed",
 		wrapped: cause,
 	}
+}
+
+// InvalidHostname refuses a name the user is still typing.
+//
+// Unlike the rest of the catalogue these appear while a field has focus, so
+// they are phrased as a rule rather than a failure — "can only contain" rather
+// than "could not be used". None of them offer an action: the action is to
+// keep typing, and a button saying so would be noise.
+// limit carries the length rule that applies to the problem, so the numbers
+// stay owned by the validator while the wording stays owned by the catalogue.
+func InvalidHostname(label string, p HostnameProblem, limit int) *Error {
+	e := &Error{
+		Code:   CodeInvalidHostname,
+		Detail: fmt.Sprintf("hostname label %q rejected: %s", label, p),
+	}
+	switch p {
+	case HostnameEmpty:
+		e.Message = "Give your server a name."
+		e.Why = "This becomes the web address you'll type to reach it."
+	case HostnameTooShort:
+		e.Message = fmt.Sprintf("That name is a little short — use at least %d characters.", limit)
+		e.Why = "Very short names on these addresses were claimed years ago, so a longer one is far more likely to be free."
+	case HostnameTooLong:
+		e.Message = fmt.Sprintf("That name is too long — keep it to %d characters or fewer.", limit)
+	case HostnameBadCharacters:
+		e.Message = "Use only letters, numbers and hyphens."
+		e.Why = "Spaces, dots and other punctuation aren't allowed in a web address."
+	case HostnameEdgeHyphen:
+		e.Message = "A name can't start or end with a hyphen."
+	case HostnameReservedPrefix:
+		e.Message = "Names starting with \"xn--\" are reserved."
+		e.Why = "That prefix is how web addresses encode non-English characters, so it can't be used directly."
+	default:
+		e.Message = "That name can't be used."
+	}
+	return e
 }

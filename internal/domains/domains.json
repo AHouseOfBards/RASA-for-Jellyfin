@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "updated": "2026-08-24",
+  "note": "Parent domains RASA will offer. A domain belongs here only if it appears on the Public Suffix List; see SPEC.md section 8. The CI audit re-checks this and fails the build if an unlisted domain creeps in.",
+  "domains": [
+    { "name": "freeddns.org",   "default": true, "rank": 1 },
+    { "name": "mywire.org",     "rank": 2 },
+    { "name": "webredirect.org","rank": 3 },
+    { "name": "kozow.com",      "rank": 4 },
+    { "name": "loseyourip.com", "rank": 5 },
+    { "name": "casacam.net",    "rank": 6 },
+    { "name": "ddnsgeek.com",   "rank": 7 },
+    { "name": "gleeze.com",     "rank": 8 },
+    { "name": "opik.net",       "rank": 9 }
+  ],
+  "blocked": [
+    { "name": "flashhub.net",   "reason": "not on the Public Suffix List" },
+    { "name": "ezgateway.net",  "reason": "not on the Public Suffix List" },
+    { "name": "remotewire.net", "reason": "not on the Public Suffix List" },
+    { "name": "dynu.com",       "reason": "not on the Public Suffix List, and not offered on the free tier" },
+    { "name": "dynu.org",       "reason": "not on the Public Suffix List, and not offered on the free tier" }
+  ]
+}
