@@ -5,7 +5,12 @@
 ; site rather than worked around.
 
 !define APPNAME "RASA for Jellyfin"
-!define VERSION "1.0.0"
+
+; The release workflow passes -DVERSION=vX.Y.Z. The fallback keeps a local
+; "makensis rasa.nsi" working for anyone testing the installer by hand.
+!ifndef VERSION
+  !define VERSION "0.0.0-dev"
+!endif
 
 Name "${APPNAME}"
 OutFile "rasa-setup-windows-x64.exe"

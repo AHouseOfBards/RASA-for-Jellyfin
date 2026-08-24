@@ -1,0 +1,66 @@
+# The standing audits: checks against things outside this repository that can
+# change without anybody here noticing.
+#
+# Both failures they guard against are invisible at the moment they happen.
+# That is why they run on a schedule rather than only on a push - nothing in a
+# pull request would ever trigger them.
+name: Audit
+
+on:
+  schedule:
+    # Weekly. The things being watched change on the order of months, and a
+    # week is short enough that a regression is caught long before a release.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  public-suffix-list:
+    name: Parent domains are on the Public Suffix List
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # SPEC.md §8. A parent domain that leaves the list does not break
+      # anything on the day it happens: it merges every RASA user on that
+      # domain into a single Let's Encrypt certificate bucket, and issuance
+      # starts failing weeks later for reasons no individual user can see.
+      # This comparison is how the three unsafe Dynu domains were found.
+      - name: Audit domains.json
+        env:
+          RASA_AUDIT_PSL: "1"
+        run: go test ./internal/domains/ -run PublicSuffix -v
+
+  caddy-modules:
+    name: The bundled proxy can still be built
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install xcaddy
+        run: go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+
+      # A pinned module that is deleted, renamed, or made incompatible with a
+      # newer Caddy is discovered here rather than on release day. The script
+      # asserts both modules are present in the finished binary, because a
+      # build that succeeds without them produces a proxy that fails at start
+      # after RASA has already reported success.
+      - name: Build and verify
+        run: sh packaging/caddy/build.sh
+
+      # Turns "the generator produces the right string" into "Caddy accepts the
+      # file", which is the only claim that matters. It is also the only place
+      # a missing module surfaces before a user's proxy refuses to start.
+      - name: Validate a generated configuration against the real binary
+        env:
+          RASA_CADDY_BINARY: ${{ github.workspace }}/dist/caddy
+        run: go test ./internal/caddy/ -run RealCaddy -v

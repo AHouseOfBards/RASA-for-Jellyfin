@@ -1,0 +1,100 @@
+# Build and test on every platform RASA targets.
+#
+# Windows is not an afterthought here (decision 6 makes it the priority
+# platform), and it is also where the interesting bugs live: the port-freedom
+# probe and the reachability self-check both had to be fixed for the way
+# Windows treats a wildcard bind alongside a loopback one, which a Linux-only
+# matrix would never have caught.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Check formatting
+        shell: bash
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      # The race detector is where a UI that publishes model snapshots from a
+      # background pipeline earns its keep, so it runs on one platform rather
+      # than none.
+      - name: Test with the race detector
+        if: matrix.os == 'ubuntu-latest'
+        run: go test -race ./...
+
+  cross-build:
+    name: Cross-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Every platform must at least compile, including the one that is out of
+      # scope for distribution: macOS is unshippable without notarization
+      # (decision 13), but a build failure there is still a bug.
+      - name: Build every target
+        run: |
+          for target in windows/amd64 windows/arm64 linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            echo "== $target"
+            GOOS=${target%/*} GOARCH=${target#*/} go build ./...
+          done
+
+  no-dependencies:
+    name: No third-party dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # RASA is an unsigned binary asking for administrator rights on a home
+      # machine. Every dependency it takes is one more thing a cautious user
+      # has to trust, so "no dependencies" is a property worth enforcing rather
+      # than a claim in the README that quietly stops being true.
+      - name: Assert the dependency graph is empty
+        run: |
+          deps=$(go list -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' ./... \
+                 | grep -v '^github.com/AHouseOfBards/RASA-for-Jellyfin' || true)
+          if [ -n "$deps" ]; then
+            echo "RASA has acquired third-party dependencies:"
+            echo "$deps"
+            exit 1
+          fi
+          echo "ok: standard library only"

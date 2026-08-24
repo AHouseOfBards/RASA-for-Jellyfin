@@ -171,14 +171,68 @@ func (in *Installer) Validate(ctx context.Context, env map[string]string) error 
 		return nil
 	}
 
-	detail := strings.TrimSpace(string(out))
-	if isMissingModule(detail) {
-		// This is the packaging failure the package doc warns about, and it
-		// is worth naming precisely: a stock Caddy parses everything else in
-		// the file and fails only on the module it does not have.
-		return fmt.Errorf("the bundled proxy is missing the DNS module it needs (built without caddy-dns/dynu): %s", firstLine(detail))
+	detail := errorLine(string(out))
+	if directive, module, ok := missingModule(detail); ok {
+		// This is the packaging failure the package doc warns about, and it is
+		// worth naming precisely: Caddy parses every other line in the file and
+		// fails only on the directive whose module is absent, so the message
+		// has to say which one — "built without a module" sends whoever reads
+		// it to check the wrong thing.
+		return fmt.Errorf("the bundled proxy is missing the %s module, which provides the %q directive (build it with packaging/caddy/build.sh): %s",
+			module, directive, detail)
 	}
-	return fmt.Errorf("the proxy configuration was rejected: %s", firstLine(detail))
+	return fmt.Errorf("the proxy configuration was rejected: %s", detail)
+}
+
+// errorLine picks the line that says what went wrong.
+//
+// Caddy writes an informational JSON line to stderr before it reports
+// anything, so the first line of output is reliably "using config from file"
+// and reliably useless. This was caught by running a real Caddy against a real
+// generated file, which no amount of string comparison would have found.
+func errorLine(out string) string {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" || strings.HasPrefix(line, "{") {
+			// Skip blanks and Caddy's structured log lines.
+			continue
+		}
+		return line
+	}
+	return strings.TrimSpace(out)
+}
+
+// modulesByDirective maps the directives the generated file uses to the module
+// that has to be compiled in for them to exist.
+var modulesByDirective = map[string]string{
+	"rate_limit": "caddy-ratelimit",
+	"dynu":       "caddy-dns/dynu",
+}
+
+// missingModule identifies which directive Caddy did not recognise, and which
+// module supplies it.
+func missingModule(detail string) (directive, module string, ok bool) {
+	lower := strings.ToLower(detail)
+	if strings.Contains(lower, "dns.providers.dynu") {
+		return "dns dynu", "caddy-dns/dynu", true
+	}
+	marker := "unrecognized directive: "
+	i := strings.Index(lower, marker)
+	if i < 0 {
+		marker = "unknown directive: "
+		i = strings.Index(lower, marker)
+	}
+	if i < 0 {
+		return "", "", false
+	}
+	directive = strings.Fields(detail[i+len(marker):])[0]
+	if module, known := modulesByDirective[directive]; known {
+		return directive, module, true
+	}
+	// An unrecognised directive RASA does not know about still means a wrong
+	// binary; naming the directive is more useful than guessing the module.
+	return directive, "required", true
 }
 
 // Version reports the installed Caddy's version string, for the state file.
@@ -217,16 +271,6 @@ func envPairs(env map[string]string) []string {
 		out = append(out, k+"="+v)
 	}
 	return out
-}
-
-// isMissingModule recognises the specific failure a stock Caddy produces
-// against a file using the Dynu module.
-func isMissingModule(s string) bool {
-	l := strings.ToLower(s)
-	return strings.Contains(l, "unrecognized directive") ||
-		strings.Contains(l, "unknown directive") ||
-		strings.Contains(l, "getting module named") ||
-		(strings.Contains(l, "module") && strings.Contains(l, "dns.providers.dynu"))
 }
 
 func firstLine(s string) string {

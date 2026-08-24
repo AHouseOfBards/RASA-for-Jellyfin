@@ -1,0 +1,159 @@
+# Builds the release assets for a tag.
+#
+# Everything here is unsigned by design (decision 13: no code-signing budget).
+# SmartScreen will warn on every Windows download and reputation never
+# accumulates, because it attaches to the file hash rather than to a publisher.
+# The mitigation is honest documentation and published checksums, which is why
+# the checksum step is not optional.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build (e.g. v1.0.0)
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CADDY_VERSION: v2.10.0
+  DYNU_VERSION: v1.0.0
+  RATELIMIT_VERSION: v0.1.0
+
+jobs:
+  build:
+    name: ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+            ext: .exe
+          - goos: linux
+            goarch: amd64
+            ext: ""
+          - goos: linux
+            goarch: arm64
+            ext: ""
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Resolve version
+        id: version
+        run: echo "value=${GITHUB_REF_NAME:-${{ inputs.version }}}" >> "$GITHUB_OUTPUT"
+
+      - name: Install xcaddy
+        run: go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+
+      # The bundled proxy is built with the two modules the generated config
+      # uses, and the script fails if either is missing from the result.
+      - name: Build the bundled Caddy
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          OUT: ./dist/caddy${{ matrix.ext }}
+        run: sh packaging/caddy/build.sh
+
+      # staging=0 is the one thing a release must set deliberately. Development
+      # builds default to Let's Encrypt staging so that a day of debugging
+      # cannot exhaust the production rate limit (SPEC.md §19); leaving that
+      # default in a release would ship certificates no browser trusts.
+      - name: Build RASA
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          VERSION="${{ steps.version.outputs.value }}"
+          LDFLAGS="-s -w -X main.version=${VERSION} -X main.staging=0"
+          go build -trimpath -ldflags "$LDFLAGS" -o "dist/rasa${{ matrix.ext }}" ./cmd/rasa
+          go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o "dist/rasa-sync${{ matrix.ext }}" ./cmd/rasa-sync
+
+      - name: Package (Windows installer)
+        if: matrix.goos == 'windows'
+        run: |
+          sudo apt-get update && sudo apt-get install -y nsis
+          cp packaging/windows/rasa.nsi dist/
+          cd dist
+          makensis -DVERSION="${{ steps.version.outputs.value }}" rasa.nsi
+          mv rasa-setup-windows-x64.exe "../rasa-setup-${{ steps.version.outputs.value }}-windows-amd64.exe"
+
+      - name: Package (Linux tarball)
+        if: matrix.goos == 'linux'
+        run: |
+          cp packaging/linux/install.sh dist/
+          tar -czf "rasa-${{ steps.version.outputs.value }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" \
+            -C dist rasa rasa-sync caddy install.sh
+
+      # With no signature, a published hash is the only integrity signal a
+      # cautious user has. It is generated here rather than by hand so that it
+      # cannot drift from the artefact it describes.
+      - name: Checksums
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(rasa-*.exe rasa-*.tar.gz)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "no artefacts were produced" >&2
+            exit 1
+          fi
+          sha256sum "${files[@]}" | tee "checksums-${{ matrix.goos }}-${{ matrix.goarch }}.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rasa-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            rasa-*.exe
+            rasa-*.tar.gz
+            checksums-*.txt
+
+  publish:
+    name: Publish
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+
+      - name: Collect checksums
+        run: cat assets/checksums-*.txt > assets/SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            assets/rasa-*
+            assets/SHA256SUMS.txt
+          body: |
+            ## Installing
+
+            **Windows** — download the `.exe`, run it, accept one administrator
+            prompt. Windows will warn that the publisher is unknown: RASA is
+            unsigned, and there is no code-signing budget behind it. Choose
+            **More info → Run anyway**, or verify the checksum below first.
+
+            **Linux** — download the `.tar.gz`, extract it, and run
+            `sudo ./install.sh`.
+
+            Verify what you downloaded against `SHA256SUMS.txt`. With no
+            signature, that hash is the only integrity signal there is.
+
+            ## What stays behind
+
+            RASA is a setup app. Once it finishes you can uninstall it and
+            remote access keeps working — the proxy and the address updater are
+            installed separately and are not removed with it. To take remote
+            access down deliberately, run RASA again and choose
+            **Remove remote access**.
