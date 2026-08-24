@@ -84,6 +84,18 @@ type Router struct {
 	// Vendor and Model drive the router-specific instructions in routers.json.
 	Vendor string
 	Model  string
+
+	// ControlURL and ServiceType address the WAN connection service that
+	// mapping requests are sent to. They are carried here so task 5 does not
+	// repeat SSDP discovery — which costs seconds and can fail on a busy
+	// wireless network even when it just succeeded.
+	ControlURL  string
+	ServiceType string
+
+	// MAC is the gateway's hardware address, used to identify the vendor when
+	// UPnP is off entirely. It is the only identification tier that needs no
+	// cooperation from the router.
+	MAC string
 }
 
 // Ports records local availability. This is about what is bound on this

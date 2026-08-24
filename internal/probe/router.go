@@ -69,6 +69,9 @@ func (p *RouterProber) Probe(ctx context.Context) Router {
 	if gw, ok := defaultGateway(ctx); ok {
 		out.Gateway = gw
 		out.Reachable = true
+		// The hardware address identifies the vendor even when the router
+		// refuses every other kind of question.
+		out.MAC = gatewayMAC(ctx, gw)
 	}
 
 	loc, from, err := p.discover(ctx)
@@ -96,6 +99,7 @@ func (p *RouterProber) Probe(ctx context.Context) Router {
 		p.Log.Debug("igd has no WAN connection service")
 		return out
 	}
+	out.ControlURL, out.ServiceType = ctrl, svcType
 	// The device speaks IGD, so a mapping request is at least plausible. It
 	// may still be refused, which is why task 5 verifies externally rather
 	// than trusting this.

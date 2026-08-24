@@ -64,6 +64,7 @@ internal/paths/      where logs, state and credentials live
 internal/probe/      pre-flight: Jellyfin, public address, router/UPnP, ports
 internal/mode/       chooses public / IPv6 / mesh access from probe results
 internal/dynu/       Dynu v2 API client
+internal/portmap/    UPnP IGD port mapping with permanent-lease verification
 ```
 
 ### Live API tests
@@ -97,7 +98,7 @@ Task numbers refer to [SPEC.md §18](SPEC.md#18-implementation-tasks).
 - [x] **2** — Dynu v2 API client
 - [x] **3** — Probe suite (Jellyfin discovery, public IP, CGNAT detection)
 - [x] **4** — Mode router
-- [ ] **5** — Port mapper and router instruction guide
+- [~] **5** — Port mapper (UPnP IGD) done; router instruction guide (`routers.json`) not started
 - [ ] **6** — Caddy service installer
 - [ ] **7** — DNS propagation waiter
 - [ ] **8** — Jellyfin configuration client
