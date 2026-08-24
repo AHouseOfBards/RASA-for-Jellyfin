@@ -91,12 +91,31 @@ func (l Layout) SyncLog() string { return filepath.Join(l.LogDir, "sync.log") }
 // answerable by opening one file (SPEC.md §15).
 func (l Layout) LastSyncFile() string { return filepath.Join(l.StateDir, "last-sync.txt") }
 
+// CaddyfilePath is the generated proxy configuration. It lives beside state
+// rather than in the install directory because the Caddy service keeps reading
+// it after RASA itself is uninstalled (SPEC.md §3).
+func (l Layout) CaddyfilePath() string { return filepath.Join(l.StateDir, "Caddyfile") }
+
+// CaddyDataDir is where Caddy stores issued certificates and its ACME account
+// key. Losing it means re-issuing, which spends Let's Encrypt quota, so it is
+// somewhere durable rather than a temporary directory.
+func (l Layout) CaddyDataDir() string { return filepath.Join(l.Root, "caddy") }
+
+// BinDir holds the executables that outlive RASA: the bundled Caddy and the
+// address sync helper. The uninstaller must leave this alone.
+func (l Layout) BinDir() string { return filepath.Join(l.Root, "bin") }
+
+// EnvFile holds the credential a service reads at startup. Used on Linux,
+// where systemd can read a root-owned 0600 file that the unit itself does not
+// expose in its environment listing.
+func (l Layout) EnvFile() string { return filepath.Join(l.SecretDir, "rasa.env") }
+
 // SecretFile is the protected credential store.
 func (l Layout) SecretFile() string { return filepath.Join(l.SecretDir, "credentials.dat") }
 
 // EnsureDirs creates every directory in the layout.
 func (l Layout) EnsureDirs() error {
-	for _, d := range []string{l.Root, l.LogDir, l.StateDir, l.SecretDir} {
+	for _, d := range []string{l.Root, l.LogDir, l.StateDir, l.SecretDir, l.BinDir(), l.CaddyDataDir()} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return err
 		}

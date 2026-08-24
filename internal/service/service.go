@@ -74,6 +74,11 @@ type Timer struct {
 	// matters because a WAN address most often changes across a reboot.
 	RunAtStartup bool
 	Environment  map[string]string
+	// EnvironmentFile is read at run time instead of baking values into the
+	// unit. A systemd unit file is world-readable, so a credential passed
+	// through Environment would be readable by every account on the machine;
+	// this is how the DDNS token stays out of it.
+	EnvironmentFile string
 }
 
 // Manager installs and controls OS services and timers.
