@@ -1,0 +1,112 @@
+# RASA for Jellyfin
+
+**Remote Access Setup App** — one download that gives a self-hosted Jellyfin server a secure public address, then gets out of the way.
+
+RASA registers a free hostname, obtains a Let's Encrypt certificate, installs a reverse proxy, opens the router port, and writes Jellyfin's own network settings. When it finishes, **you can uninstall RASA and remote access keeps working.**
+
+> **Status: early development.** The project skeleton is in place; the setup wizard is not implemented yet. See [SPEC.md](SPEC.md) for the full design and [Roadmap](#roadmap) for what is built.
+
+---
+
+## Why this exists
+
+Setting up remote access for Jellyfin by hand means a dynamic DNS account, a reverse proxy, an ACME client, a router port forward, and four settings inside Jellyfin that fail silently if you get them wrong. RASA does all of it in about seven minutes, and only asks you for three things: your Jellyfin login, a Dynu account, and a name for your server.
+
+## How it works
+
+RASA is an **installer, not a background app**. It configures three things that keep running on their own:
+
+| Component | Responsibility | Survives RASA's removal |
+|---|---|---|
+| **Caddy** (installed as a service) | TLS, reverse proxy, and automatic certificate renewal | ✅ |
+| **Scheduled task** | Keeps your address pointed at your changing IP | ✅ |
+| **Jellyfin settings** | Written once over Jellyfin's own API | ✅ |
+
+Certificates are issued using the **DNS-01 challenge**, so port 80 never needs to be open. If port 443 is unavailable, RASA falls back to 8443 automatically.
+
+If your connection is behind CGNAT, RASA detects it and routes to a mode that still works rather than failing.
+
+## Requirements
+
+- **Jellyfin 10.11.5 or newer**, already installed and running
+- **Windows 10/11** or **Linux** (macOS is not supported — see [SPEC.md §17](SPEC.md#17-packaging-and-distribution))
+- A free [Dynu](https://www.dynu.com/) account (created during setup)
+- Administrator rights, once, during installation
+
+## Installation
+
+Releases are not yet published. When they are, downloads will be on the [Releases](https://github.com/AHouseOfBards/RASA-for-Jellyfin/releases) page.
+
+> ⚠️ **Windows will warn you about this app.** RASA is not code-signed — signing certificates cost money this project does not have. Windows SmartScreen will show *"Windows protected your PC"*; choose **More info → Run anyway**. Verify the SHA-256 checksum published with each release if you want to confirm the download is intact.
+
+## Building from source
+
+```sh
+git clone https://github.com/AHouseOfBards/RASA-for-Jellyfin.git
+cd RASA-for-Jellyfin
+
+go build ./...
+go test ./...
+go run ./cmd/rasa -root ./.devdata    # -root avoids needing admin during development
+```
+
+Requires Go 1.26 or newer. There are currently no third-party dependencies.
+
+### Layout
+
+```
+cmd/rasa/            entry point
+internal/logging/    structured logging with tested secret redaction
+internal/rasaerr/    typed errors: user-facing copy separated from technical detail
+internal/state/      resumable setup state machine and its persistence
+internal/secrets/    credential storage (DPAPI on Windows, 0600 file on Linux)
+internal/paths/      where logs, state and credentials live
+```
+
+### Where RASA puts things
+
+These locations deliberately survive uninstallation, because that is when logs matter most.
+
+| | Windows | Linux |
+|---|---|---|
+| State and recovery file | `C:\ProgramData\RASA` | `/var/lib/rasa` |
+| Logs | `C:\ProgramData\RASA\logs` | `/var/log/rasa` |
+| Credentials | `C:\ProgramData\RASA\secrets` | `/etc/rasa` |
+
+## Roadmap
+
+Task numbers refer to [SPEC.md §18](SPEC.md#18-implementation-tasks).
+
+- [x] **1** — Project skeleton, state store, structured logging with tested redaction
+- [x] **1b** — Error catalogue with user-facing copy
+- [ ] **2** — Dynu v2 API client
+- [ ] **3** — Probe suite (Jellyfin discovery, public IP, CGNAT detection)
+- [ ] **4** — Mode router
+- [ ] **5** — Port mapper and router instruction guide
+- [ ] **6** — Caddy service installer
+- [ ] **7** — DNS propagation waiter
+- [ ] **8** — Jellyfin configuration client
+- [ ] **9** — Wizard UI
+- [ ] **10** — Installer and service registration
+- [ ] **11** — Scheduled task installer
+- [ ] **12** — State file and repair mode
+- [ ] **13** — Diagnostic bundle and recovery file
+
+## Contributing
+
+Router port-forwarding instructions live in a data file rather than in code, so **adding your router is a pull request, not a release**. The same applies to the list of usable Dynu parent domains.
+
+Two rules worth knowing before opening a PR:
+
+1. **Secrets must never reach a log line.** `internal/logging` redacts them and has tests that enforce it. Assume every diagnostic bundle gets pasted into a public issue — because it will.
+2. **Users never see raw errors.** Add new failures to `internal/rasaerr`'s catalogue with plain-language copy. There are tests that reject jargon, status codes, and dead ends with no recovery action.
+
+## Security
+
+RASA puts a login form on the public internet, so it takes some responsibility for that: it rate-limits Jellyfin's authentication endpoint, refuses to expose a server with a weak admin password, and never enables Jellyfin's own UPnP.
+
+If you find a security issue, please open an issue marked as such rather than a pull request.
+
+## Licence
+
+Not yet chosen.

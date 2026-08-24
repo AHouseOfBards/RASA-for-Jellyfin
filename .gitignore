@@ -1,0 +1,32 @@
+# Build output
+/bin/
+/dist/
+rasa
+rasa.exe
+
+# Bundled Caddy binary, produced by xcaddy in CI — never committed
+/third_party/caddy/
+caddy
+caddy.exe
+
+# Go
+*.test
+*.out
+coverage.*
+
+# Local development data directory (rasa -root)
+/.devdata/
+
+# Never commit real credentials or captured API responses containing them
+*.pem
+*.key
+credentials.dat
+state.json
+/testdata/live/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
