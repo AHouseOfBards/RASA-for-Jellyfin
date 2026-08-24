@@ -114,16 +114,50 @@ func (c *Client) GetRoot(ctx context.Context, hostname string) (*Root, error) {
 }
 
 // CreateDomain claims a hostname, or updates it if the account already owns it.
+//
+// Two live API behaviours shape this, both verified on 2026-08-24:
+//
+//   - POST /dns returns only {"statusCode":200}. It does NOT return the new
+//     record, so the id must be resolved with a follow-up lookup. Everything
+//     downstream addresses the hostname by id, so returning without one is
+//     useless to the caller.
+//   - Re-posting a name the account already owns fails with 505 Validation
+//     Exception rather than updating it. SPEC.md §10 requires every step to be
+//     safe to re-run, so the existence check happens here rather than leaving
+//     each caller to remember it.
 func (c *Client) CreateDomain(ctx context.Context, req CreateDomainRequest) (*Domain, error) {
+	if req.Name == "" {
+		return nil, errors.New("hostname is required")
+	}
 	if req.TTL == 0 {
 		req.TTL = DefaultTTL
 	}
-	var out domainResponse
-	if err := c.do(ctx, http.MethodPost, "/dns", req, &out); err != nil {
+
+	// Already ours? Update in place, so a resumed run replays cleanly.
+	existing, err := c.FindDomain(ctx, req.Name)
+	if err != nil {
 		return nil, err
 	}
-	c.registerTokens([]Domain{out.Domain})
-	return &out.Domain, nil
+	if existing != nil {
+		if err := c.do(ctx, http.MethodPost, fmt.Sprintf("/dns/%d", existing.ID), req, nil); err != nil {
+			return nil, err
+		}
+		return c.GetDomain(ctx, existing.ID)
+	}
+
+	if err := c.do(ctx, http.MethodPost, "/dns", req, nil); err != nil {
+		return nil, err
+	}
+
+	// Resolve the id the create call declined to give us.
+	created, err := c.FindDomain(ctx, req.Name)
+	if err != nil {
+		return nil, err
+	}
+	if created == nil {
+		return nil, fmt.Errorf("hostname %s was accepted but does not appear on the account", req.Name)
+	}
+	return created, nil
 }
 
 // UpdateAddresses publishes new A and AAAA addresses for a hostname.
@@ -147,13 +181,38 @@ func (c *Client) UpdateAddresses(ctx context.Context, id int64, name string, v4,
 	if !req.IPv4 && !req.IPv6 {
 		return nil, errors.New("no valid address supplied")
 	}
+	if id <= 0 {
+		return nil, errors.New("invalid hostname id")
+	}
 
-	var out domainResponse
-	if err := c.do(ctx, http.MethodPost, fmt.Sprintf("/dns/%d", id), req, &out); err != nil {
+	// The update call returns only {"statusCode":200}, so the caller is given
+	// a re-read rather than an empty struct that looks like a cleared record.
+	if err := c.do(ctx, http.MethodPost, fmt.Sprintf("/dns/%d", id), req, nil); err != nil {
 		return nil, err
 	}
-	c.registerTokens([]Domain{out.Domain})
-	return &out.Domain, nil
+	return c.GetDomain(ctx, id)
+}
+
+// DeleteDomain removes a hostname from the account.
+//
+// Deleting an absent hostname is treated as success, so cleanup after a failed
+// run — or a repeated uninstall — is safe to run again.
+//
+// The id is validated first, and that guard is load-bearing rather than
+// defensive. Dynu answers a delete of an unknown id with 501 Argument
+// Exception, which is the same response it gives for a malformed one — so
+// without this check, deleting id 0 would look exactly like "already gone" and
+// report success while removing nothing.
+func (c *Client) DeleteDomain(ctx context.Context, id int64) error {
+	if id <= 0 {
+		return fmt.Errorf("refusing to delete invalid hostname id %d", id)
+	}
+	err := c.do(ctx, http.MethodDelete, fmt.Sprintf("/dns/%d", id), nil, nil)
+	var ae *APIError
+	if errors.As(err, &ae) && (ae.StatusCode == http.StatusNotFound || ae.StatusCode == 501) {
+		return nil
+	}
+	return err
 }
 
 // ListRecords returns the records in a domain.
@@ -181,11 +240,18 @@ func (c *Client) AddRecord(ctx context.Context, domainID int64, r RecordRequest)
 }
 
 // DeleteRecord removes a record. Deleting an absent record is treated as
-// success, so cleanup after a failed run is safe to repeat.
+// success, so DNS-01 cleanup after a failed run is safe to repeat.
+//
+// Ids are validated for the same reason as in DeleteDomain: Dynu cannot
+// distinguish "unknown id" from "malformed id" in its response, so a zero id
+// would silently report success.
 func (c *Client) DeleteRecord(ctx context.Context, domainID, recordID int64) error {
+	if domainID <= 0 || recordID <= 0 {
+		return fmt.Errorf("refusing to delete invalid record id %d on domain %d", recordID, domainID)
+	}
 	err := c.do(ctx, http.MethodDelete, fmt.Sprintf("/dns/%d/record/%d", domainID, recordID), nil, nil)
 	var ae *APIError
-	if errors.As(err, &ae) && ae.StatusCode == http.StatusNotFound {
+	if errors.As(err, &ae) && (ae.StatusCode == http.StatusNotFound || ae.StatusCode == 501) {
 		return nil
 	}
 	return err

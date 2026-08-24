@@ -442,6 +442,20 @@ Three findings that change the implementation:
 
 > ⚠️ **Errors can arrive inside an HTTP 200**, carried in the body's `statusCode`. Both must be checked. An unknown hostname returns `501 Argument Exception`, not `404`.
 
+### Write endpoints
+
+✅ **Verified 2026-08-24** against a live account: created a disposable hostname, exercised every write path on it, and deleted it. Three behaviours are not what the read endpoints imply:
+
+| Call | Returns | Consequence |
+|---|---|---|
+| `POST /dns` (create) | `{"statusCode":200}` — **no id, no record** | The id must be resolved with a follow-up `GET /dns`. Everything downstream addresses by id, so a create that does not do this is useless to the caller. |
+| `POST /dns` with a name already owned | `505 Validation Exception` | **Create is not idempotent.** SPEC §10 requires every step to be re-runnable, so the client checks for an existing hostname and updates in place instead. |
+| `POST /dns/{id}` (update) | `{"statusCode":200}` | Works correctly — both address families persist. Return a re-read rather than the empty body. |
+| `DELETE /dns/{id}` | `{"statusCode":200}` | Works. |
+| `DELETE /dns/{id}` — unknown id | `501 Argument Exception` | Same response as a **malformed** id. |
+
+> 🔴 **That last row caused a real bug and is worth guarding against permanently.** Because Dynu cannot distinguish "unknown id" from "invalid id", treating `501` as "already gone" means `DeleteDomain(0)` reports success while deleting nothing. The first live run leaked three hostnames onto the account for exactly this reason — the create returned no id, so cleanup ran against id `0` and silently did nothing. Validate ids before every delete.
+
 The `ipv4` and `ipv6` booleans control whether each family is published at all — setting `ipv6Address` without `ipv6: true` does nothing, which is a quiet way to lose Mode A6.
 
 ### IPv6 is not optional
@@ -705,7 +719,7 @@ Single static binaries per platform keep the installer simple; the UPnP, DNS, an
 ### Still to verify
 
 - ~~**Dynu address-field names**~~ — ✅ resolved 2026-08-24; see §12. No OpenAPI document exists, so the schema was captured from live responses.
-- **Dynu write endpoints** — `POST /dns`, `POST /dns/{id}` and `POST /dns/{id}/record` are implemented from the shapes the read endpoints return, but have not been exercised against a live account, since doing so creates real records. Confirm on a throwaway hostname before task 6.
+- ~~**Dynu write endpoints**~~ — ✅ verified 2026-08-24 on a disposable hostname; see §12. Create, update, TXT add/delete, and hostname delete all confirmed, along with idempotency of re-claim and re-delete.
 - **Jellyfin configuration keys at 10.11.5** — confirm against the running server's own OpenAPI document.
 - **Permanent UPnP lease support** — how many common routers honour lease duration `0`.
 - **Clipboard-watch behaviour in the webview** per platform.
