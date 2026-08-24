@@ -68,6 +68,7 @@ internal/portmap/    UPnP IGD port mapping with permanent-lease verification
 internal/routerguide/ per-router forwarding instructions from routers.json
 internal/reach/      external reachability checks (reachable / unreachable / inconclusive)
 internal/dnswait/    waits for records on authoritative nameservers before ACME
+internal/jellyfin/   configures Jellyfin's network settings over its own API
 ```
 
 ### Live API tests
@@ -104,7 +105,7 @@ Task numbers refer to [SPEC.md §18](SPEC.md#18-implementation-tasks).
 - [x] **5** — Port mapper and router instruction guide
 - [ ] **6** — Caddy service installer
 - [x] **7** — DNS propagation waiter
-- [ ] **8** — Jellyfin configuration client
+- [x] **8** — Jellyfin configuration client
 - [ ] **9** — Wizard UI
 - [ ] **10** — Installer and service registration
 - [ ] **11** — Scheduled task installer
