@@ -1,0 +1,28 @@
+# Normalise to LF in the repository; check out native on Windows.
+* text=auto
+
+# Go tooling and CI expect LF regardless of platform.
+*.go   text eol=lf
+*.mod  text eol=lf
+*.sum  text eol=lf
+*.md   text eol=lf
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# Shell scripts must be LF or they will not execute on Linux.
+*.sh   text eol=lf
+
+# Windows-only scripts need CRLF.
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Binaries and archives must never be line-ending converted.
+*.exe  binary
+*.dll  binary
+*.png  binary
+*.ico  binary
+*.zip  binary
+*.gz   binary
+*.pdf  binary
