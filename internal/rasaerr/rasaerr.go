@@ -11,6 +11,7 @@ package rasaerr
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -38,9 +39,51 @@ const (
 // Action is a recovery the user can take. Where an action is possible it
 // should be a button, not a sentence telling them to go and do something.
 type Action struct {
-	ID    string
-	Label string
-	Kind  ActionKind
+	ID    string     `json:"id"`
+	Label string     `json:"label"`
+	Kind  ActionKind `json:"kind"`
+}
+
+// String names the kind. ActionKind crosses the wire to the UI, and a name
+// survives reordering the constants where an integer does not.
+func (k ActionKind) String() string {
+	switch k {
+	case ActionRetry:
+		return "retry"
+	case ActionAlternate:
+		return "alternate"
+	case ActionExternal:
+		return "external"
+	case ActionCancel:
+		return "cancel"
+	}
+	return "unknown"
+}
+
+// MarshalJSON encodes the kind as its name.
+func (k ActionKind) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Quote(k.String())), nil
+}
+
+// UnmarshalJSON accepts the name, so a decoded Action round-trips.
+func (k *ActionKind) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	switch s {
+	case "retry":
+		*k = ActionRetry
+	case "alternate":
+		*k = ActionAlternate
+	case "external":
+		*k = ActionExternal
+	case "cancel":
+		*k = ActionCancel
+	default:
+		return fmt.Errorf("unknown recovery action %q", s)
+	}
+	return nil
 }
 
 // Error is a RASA failure.
@@ -72,11 +115,11 @@ type Error struct {
 // UserFacing is the safe projection of an Error. It is what the wizard
 // renders, and it structurally cannot carry technical detail.
 type UserFacing struct {
-	Code    Code
-	Message string
-	Why     string
-	Partial string
-	Actions []Action
+	Code    Code     `json:"code"`
+	Message string   `json:"message"`
+	Why     string   `json:"why,omitempty"`
+	Partial string   `json:"partial,omitempty"`
+	Actions []Action `json:"actions,omitempty"`
 }
 
 // Error returns the technical representation, for logs only.

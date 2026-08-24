@@ -19,6 +19,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -173,4 +176,60 @@ func Describe() string {
 		return "a systemd service and timer"
 	}
 	return fmt.Sprintf("OS services on %s", runtime.GOOS)
+}
+
+// StageBinary copies an executable into dir under the given name and returns
+// the destination path.
+//
+// The binaries a service runs must not live in RASA's install directory:
+// uninstalling RASA would take the running proxy and the address sync helper
+// with it, and SPEC.md §3 requires both to keep working afterwards. This is
+// how they get somewhere durable first.
+func StageBinary(src, dir, name string) (string, error) {
+	dst := filepath.Join(dir, name)
+	if sameFile(src, dst) {
+		return dst, nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	source, err := os.Open(src)
+	if err != nil {
+		return "", err
+	}
+	defer source.Close()
+
+	// A running service holds the destination open on Windows, so write beside
+	// it and rename rather than truncating in place.
+	tmp := dst + ".new"
+	out, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(out, source); err != nil {
+		out.Close()
+		os.Remove(tmp)
+		return "", err
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(tmp)
+		return "", err
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		os.Remove(tmp)
+		return "", err
+	}
+	return dst, nil
+}
+
+func sameFile(a, b string) bool {
+	fa, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	fb, err := os.Stat(b)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(fa, fb)
 }

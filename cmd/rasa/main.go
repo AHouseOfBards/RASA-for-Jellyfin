@@ -1,35 +1,48 @@
 // Command rasa is the RASA for Jellyfin setup application.
 //
-// This is the skeleton from SPEC.md task 1: it wires up the layout, logger,
-// state store and secret store, and reports what it finds. The wizard itself
-// (task 9) and the setup phases (tasks 2-8) are not implemented yet, so a run
-// currently reports status and exits rather than configuring anything.
+// It is a wizard, not a service. It runs once, configures a proxy, a
+// certificate, a router mapping, a DNS record and Jellyfin itself, registers
+// the two things that must outlive it, and then can be uninstalled without any
+// of that stopping (SPEC.md §3).
+//
+// The interface is served from loopback and displayed in a browser. Everything
+// it can do is in internal/wizard; this file resolves paths, opens the log,
+// finds the bundled binaries, and gets out of the way.
 package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
+	"time"
 
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/caddy"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/logging"
-	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/mode"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/paths"
-	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/portmap"
-	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/probe"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/recovery"
-	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/routerguide"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/secrets"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/service"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/state"
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/ui"
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/wizard"
 )
 
 // version is set at build time via -ldflags "-X main.version=...".
 var version = "dev"
+
+// staging selects Let's Encrypt's staging endpoint, and defaults to on.
+//
+// SPEC.md §19 is emphatic about this: production allows five failed
+// validations per hostname per hour, and a day of debugging against it leaves
+// you locked out of the thing you are debugging. So an unadorned "go build"
+// gets staging, and a release sets -X main.staging=0 deliberately. The default
+// is the safe one because the unsafe one has to be chosen.
+var staging = "1"
 
 func main() {
 	var (
@@ -38,6 +51,9 @@ func main() {
 		showVer = flag.Bool("version", false, "print version and exit")
 		diag    = flag.Bool("diagnostics", false, "write a redacted diagnostic bundle and exit")
 		withAdr = flag.Bool("include-address", false, "include your web address in the diagnostic bundle")
+		noOpen  = flag.Bool("no-browser", false, "print the wizard's address instead of opening a browser")
+		prod    = flag.Bool("production-certificates", false, "use Let's Encrypt production rather than staging")
+		email   = flag.String("email", "", "optional address for certificate expiry notices")
 	)
 	flag.Parse()
 
@@ -54,31 +70,43 @@ func main() {
 		return
 	}
 
-	if err := run(context.Background(), *root, *verbose); err != nil {
-		// Nothing user-facing has a UI yet; once the wizard exists this becomes
-		// rasaerr.UserMessage(err) rendered on screen, never a raw error.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	if err := run(ctx, options{
+		root:       *root,
+		verbose:    *verbose,
+		openWindow: !*noOpen,
+		production: *prod,
+		email:      *email,
+	}); err != nil {
 		fmt.Fprintln(os.Stderr, "rasa:", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, root string, verbose bool) error {
+type options struct {
+	root       string
+	verbose    bool
+	openWindow bool
+	production bool
+	email      string
+}
+
+func run(ctx context.Context, o options) error {
 	layout := paths.Default()
-	if root != "" {
-		layout = paths.UnderRoot(root)
+	if o.root != "" {
+		layout = paths.UnderRoot(o.root)
 	}
 	if err := layout.EnsureDirs(); err != nil {
 		return fmt.Errorf("preparing %s: %w (administrator rights are required, or pass -root)", layout.Root, err)
 	}
 
 	level := slog.LevelInfo
-	if verbose {
+	if o.verbose {
 		level = slog.LevelDebug
 	}
-	log, err := logging.Open(layout.RASALog(), logging.Options{
-		Level:       level,
-		EventBuffer: 32,
-	})
+	log, err := logging.Open(layout.RASALog(), logging.Options{Level: level, EventBuffer: 32})
 	if err != nil {
 		return fmt.Errorf("opening log: %w", err)
 	}
@@ -91,105 +119,157 @@ func run(ctx context.Context, root string, verbose bool) error {
 		slog.String("root", layout.Root),
 	)
 
-	store := state.NewStore(layout.StateFile())
-	creds := secrets.NewFileStore(layout.SecretFile())
-
-	st, err := store.Load()
-	switch {
-	case err == state.ErrNotFound:
-		st = state.NewState(log.RunID())
-		log.Info("no previous setup found; this is a first run")
-	case err != nil:
-		// A damaged state file must not block repair — report and continue
-		// with a clean one rather than refusing to start.
-		log.Warn("existing state could not be read; starting fresh", slog.Any("err", err))
-		st = state.NewState(log.RunID())
-	default:
-		log.Info("found a previous setup",
-			slog.String("phase", string(st.Phase)),
-			slog.String("mode", string(st.Mode)),
-			slog.Bool("complete", st.IsComplete()),
-		)
+	acme := caddy.ACMEProduction
+	if staging == "1" && !o.production {
+		acme = caddy.ACMEStaging
 	}
+	log.Decision("certificate authority", authorityName(acme),
+		"development builds default to staging so that debugging cannot exhaust the production rate limit")
 
-	names, err := creds.Names()
+	w, err := wizard.New(wizard.Options{
+		Layout:      layout,
+		Log:         log,
+		Store:       state.NewStore(layout.StateFile()),
+		Secrets:     secrets.NewFileStore(layout.SecretFile()),
+		Version:     version,
+		ACMECA:      acme,
+		Email:       o.email,
+		CaddyBinary: findCaddy(layout, log),
+		SyncBinary:  findSync(layout, log),
+	})
 	if err != nil {
-		log.Warn("credential store unreadable", slog.Any("err", err))
+		return err
 	}
 
-	report(layout, creds, st, names)
+	srv, err := ui.New(w, log)
+	if err != nil {
+		return err
+	}
+	if err := srv.Start(); err != nil {
+		return err
+	}
+	defer func() {
+		shutdown, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		srv.Close(shutdown)
+	}()
 
-	// Phase 2: discover and probe. Everything downstream branches on this,
-	// so it runs even on a repeat launch — the network may have changed.
-	plog := log.WithPhase("probe")
-	res := probe.New(plog).Run(ctx)
-	decision := mode.Choose(res)
-
-	plog.Decision("mode", string(decision.Mode), decision.Reason,
-		slog.Int("listen_port", decision.ListenPort),
-		slog.Bool("needs_mapping", decision.NeedsPortMapping),
-		slog.Bool("needs_manual_forward", decision.NeedsManualForward),
-		slog.String("blocker", string(decision.Blocker)),
-	)
-
-	reportProbe(res, decision)
-
-	// Phase 4: open the path. Automatic where the router allows it, guided
-	// otherwise — never a dead end.
-	var guideText string
-	if !decision.Blocked() && decision.Mode != state.ModeMesh {
-		mapping, guide := openPath(ctx, log.WithPhase("portmap"), res, decision)
-		if mapping != nil {
-			st.PortMapping = mapping
-		}
-		if guide != nil {
-			// Kept for the recovery file: the user will need these values
-			// again if they replace or reset their router.
-			guideText = guide.PlainText()
-			fmt.Println("\n" + guideText)
+	if o.openWindow {
+		if err := ui.Open(srv.URL()); err != nil {
+			// Not fatal: the address is printed either way, and a headless
+			// machine or a locked-down desktop is a normal place to run this.
+			log.Warn("could not open a browser", slog.Any("err", err))
+			o.openWindow = false
 		}
 	}
-
-	if err := st.Advance(state.Probed); err != nil {
-		log.Warn("could not record probe phase", slog.Any("err", err))
-	}
-	st.JellyfinAddress = res.Jellyfin.Address
-	st.JellyfinVersion = res.Jellyfin.Version
-	st.Mode = decision.Mode
-	st.ListenPort = decision.ListenPort
-	for _, w := range decision.StateWarnings() {
-		st.AddWarning(w.Code, w.Text)
+	if !o.openWindow {
+		fmt.Println("Open this address to continue setup:")
+		fmt.Println(" ", srv.URL())
 	}
 
-	// Task 13: the two artifacts that outlive RASA. Written on every run,
-	// including a failed one — a partially configured machine is exactly when
-	// the recovery file matters most.
-	rec := recovery.Info{
-		State:            st,
-		Layout:           layout,
-		ServiceMechanism: service.Describe(),
-		Version:          version,
-	}
-	if guideText != "" {
-		rec.ForwardingText = guideText
-	}
-	if err := recovery.WriteFile(rec); err != nil {
-		log.Warn("could not write the recovery file", slog.Any("err", err))
+	select {
+	case <-srv.Done():
+		log.Info("wizard finished")
+	case <-ctx.Done():
+		log.Info("wizard interrupted")
 	}
 
-	if err := store.Save(st); err != nil {
-		return fmt.Errorf("saving state: %w", err)
-	}
-	log.Info("rasa exiting", slog.String("phase", string(st.Phase)))
 	fmt.Printf("\nDetails saved to %s\n", layout.RecoveryFile())
 	return nil
 }
 
+func authorityName(ca string) string {
+	if ca == caddy.ACMEStaging {
+		return "staging"
+	}
+	return "production"
+}
+
+// findCaddy locates the bundled proxy.
+//
+// A missing binary is not fatal here. Setup gets far enough to claim an address
+// and write state before it needs one, and reporting the failure through the
+// wizard is better than refusing to start with a message about packaging.
+func findCaddy(layout paths.Layout, log *logging.Logger) string {
+	exeDir := executableDir()
+	path, err := caddy.FindBinary(layout.BinDir(), exeDir, filepath.Join(exeDir, "bin"))
+	if err != nil {
+		log.Warn("no bundled proxy binary was found", slog.Any("err", err))
+		return ""
+	}
+	// Copied out of the install directory so that uninstalling RASA does not
+	// take the running proxy with it (SPEC.md §3).
+	staged, err := caddy.Stage(path, layout.BinDir())
+	if err != nil {
+		log.Warn("could not stage the proxy binary", slog.Any("err", err))
+		return path
+	}
+	log.Info("proxy binary ready", slog.String("path", staged))
+	return staged
+}
+
+// findSync locates the address-sync helper and stages it alongside the proxy,
+// for the same reason: it is registered as a scheduled task that must keep
+// running after RASA is removed.
+func findSync(layout paths.Layout, log *logging.Logger) string {
+	name := "rasa-sync"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	exeDir := executableDir()
+	for _, dir := range []string{layout.BinDir(), exeDir, filepath.Join(exeDir, "bin")} {
+		candidate := filepath.Join(dir, name)
+		if fi, err := os.Stat(candidate); err != nil || fi.IsDir() {
+			continue
+		}
+		if dir == layout.BinDir() {
+			return candidate
+		}
+		staged, err := service.StageBinary(candidate, layout.BinDir(), name)
+		if err != nil {
+			log.Warn("could not stage the sync helper", slog.Any("err", err))
+			return candidate
+		}
+		return staged
+	}
+	log.Warn("no address sync helper was found; the address will not follow a changing connection")
+	return ""
+}
+
+func executableDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "."
+	}
+	return filepath.Dir(exe)
+}
+
+// runDiagnostics writes a bundle without performing setup, so it works after
+// RASA has been reinstalled purely to collect one.
+func runDiagnostics(root string, includeAddresses bool) error {
+	layout := paths.Default()
+	if root != "" {
+		layout = paths.UnderRoot(root)
+	}
+	log, err := logging.Open(layout.RASALog(), logging.Options{})
+	if err != nil {
+		return err
+	}
+	defer log.Close()
+
+	// Register the stored credential so it cannot survive into the bundle even
+	// though this path never otherwise reads it.
+	if tok, err := secrets.NewFileStore(layout.SecretFile()).Get(secrets.DynuAPIKey); err == nil {
+		log.Redactor().RegisterSecret(tok)
+	}
+	if st, err := state.NewStore(layout.StateFile()).Load(); err == nil && st.Hostname != "" {
+		log.Redactor().RegisterAddress(st.Hostname)
+	}
+	return bundle(layout, log, includeAddresses)
+}
+
 // bundle produces a diagnostic zip on the desktop, or the working directory
 // when there is no desktop. Task 13.
-//
-// Reachable from a re-run because RASA may already have been uninstalled when
-// it is needed.
 func bundle(layout paths.Layout, log *logging.Logger, includeAddresses bool) error {
 	dest, err := os.UserHomeDir()
 	if err != nil {
@@ -216,153 +296,4 @@ func bundle(layout paths.Layout, log *logging.Logger, includeAddresses bool) err
 func dirExists(p string) bool {
 	fi, err := os.Stat(p)
 	return err == nil && fi.IsDir()
-}
-
-// openPath tries to open the router port, falling back to guided manual
-// instructions. It returns whatever mapping now exists and, when the user has
-// work to do, the instructions for it.
-//
-// A mapping that exists but is not permanent still produces instructions: the
-// lease will lapse on a reboot, and a static forward is the more durable
-// ending (SPEC.md §6).
-func openPath(ctx context.Context, log *logging.Logger, res probe.Result, d mode.Decision) (*state.PortMapping, *routerguide.Instructions) {
-	var stored *state.PortMapping
-
-	if d.NeedsPortMapping && res.Router.ControlURL != "" && res.Host.LANAddress.IsValid() {
-		m := portmap.New(res.Router.ControlURL, res.Router.ServiceType, log)
-		out, err := m.Add(ctx, portmap.Request{
-			ExternalPort:   d.ListenPort,
-			InternalPort:   d.ListenPort,
-			InternalClient: res.Host.LANAddress,
-			Protocol:       portmap.TCP,
-		})
-		switch {
-		case err != nil:
-			var ue *portmap.UPnPError
-			if errors.As(err, &ue) && ue.IsConflict() {
-				log.Warned("Your router is already sending that port to a different device.")
-			} else {
-				log.Warned("The port could not be opened automatically.")
-			}
-			log.Debug("mapping failed", slog.Any("err", err))
-		default:
-			stored = &state.PortMapping{
-				ExternalPort: out.Mapping.ExternalPort,
-				InternalPort: out.Mapping.InternalPort,
-				Method:       "upnp",
-				Permanent:    out.Mapping.Permanent(),
-				LeaseSeconds: out.Mapping.LeaseSeconds,
-			}
-			if out.Mapping.Permanent() && out.VerifiedByReadback {
-				log.OK("Port opened on your router.")
-				return stored, nil
-			}
-			log.Warned("The port was opened, but your router may clear it when it restarts.")
-		}
-	}
-
-	// Either mapping was unavailable, failed, or produced something that will
-	// not survive a reboot. All three end the same way: show the user how to
-	// make it permanent themselves.
-	cat, err := routerguide.Embedded()
-	if err != nil {
-		log.Error("router catalogue unavailable", slog.Any("err", err))
-		return stored, nil
-	}
-	entry := cat.Match(routerguide.Identity{
-		Vendor: res.Router.Vendor,
-		Model:  res.Router.Model,
-		MAC:    res.Router.MAC,
-	})
-	ins := routerguide.Build(entry, routerguide.Values{
-		Gateway:       res.Router.Gateway,
-		InternalIP:    res.Host.LANAddress,
-		Port:          d.ListenPort,
-		AddressIsDHCP: res.Host.AddressIsDHCP,
-	})
-	log.Info("rendered port forwarding guide",
-		slog.String("router", ins.RouterName),
-		slog.Bool("generic", ins.Generic),
-		slog.Bool("reservation_required", ins.ReservationRequired),
-	)
-	return stored, &ins
-}
-
-// reportProbe prints the four pre-flight lines from journey step 5, then what
-// was decided from them. The wizard will render this; for now it is stdout.
-func reportProbe(res probe.Result, d mode.Decision) {
-	s := res.Summarize()
-	fmt.Println("\nChecking things over")
-	for _, line := range []string{s.Jellyfin, s.Internet, s.Router, s.Ports} {
-		fmt.Printf("  %s\n", line)
-	}
-
-	fmt.Println("\nDecision")
-	if d.Blocked() {
-		fmt.Printf("  blocked: %s\n", d.Reason)
-	} else {
-		fmt.Printf("  mode %s on port %d\n", d.Mode, d.ListenPort)
-		fmt.Printf("  because %s\n", d.Reason)
-		switch {
-		case d.NeedsPortMapping:
-			fmt.Println("  next: open the port automatically")
-		case d.NeedsManualForward:
-			fmt.Println("  next: guided manual port forwarding")
-		}
-	}
-	for _, w := range d.Warnings {
-		fmt.Printf("  warning: %s\n", w.Text)
-	}
-}
-
-// report prints the current status. This stands in for the wizard's welcome
-// screen (journey step 4), which decides between a fresh run and repair mode.
-func report(layout paths.Layout, creds *secrets.FileStore, st *state.State, names []string) {
-	fmt.Printf("RASA for Jellyfin %s\n\n", version)
-	fmt.Printf("  data directory   %s\n", layout.Root)
-	fmt.Printf("  log              %s\n", layout.RASALog())
-	fmt.Printf("  credentials      %s\n", creds.Mechanism())
-	fmt.Printf("  stored secrets   %d\n", len(names))
-	fmt.Printf("  setup phase      %s\n", st.Phase)
-
-	if url := st.URL(); url != "" {
-		fmt.Printf("  address          %s\n", url)
-	}
-	if len(st.Warnings) > 0 {
-		fmt.Printf("\n  warnings carried from the last run:\n")
-		for _, w := range st.Warnings {
-			fmt.Printf("    - %s\n", w.Text)
-		}
-	}
-
-	fmt.Println()
-	if st.IsComplete() {
-		fmt.Println("Setup has already run. A future build will offer repair here.")
-	} else {
-		fmt.Println("Setup has not completed. The wizard is not implemented yet (task 9).")
-	}
-}
-
-// runDiagnostics writes a bundle without performing setup, so it works after
-// RASA has been reinstalled purely to collect one.
-func runDiagnostics(root string, includeAddresses bool) error {
-	layout := paths.Default()
-	if root != "" {
-		layout = paths.UnderRoot(root)
-	}
-	log, err := logging.Open(layout.RASALog(), logging.Options{})
-	if err != nil {
-		return err
-	}
-	defer log.Close()
-
-	// Register the stored credential so it cannot survive into the bundle even
-	// though this path never otherwise reads it.
-	if tok, err := secrets.NewFileStore(layout.SecretFile()).Get(secrets.DynuAPIKey); err == nil {
-		log.Redactor().RegisterSecret(tok)
-	}
-	if st, err := state.NewStore(layout.StateFile()).Load(); err == nil && st.Hostname != "" {
-		log.Redactor().RegisterAddress(st.Hostname)
-	}
-	return bundle(layout, log, includeAddresses)
 }

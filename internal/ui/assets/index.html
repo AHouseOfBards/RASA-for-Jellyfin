@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="rasa-token" content="{{TOKEN}}">
+<title>Set up remote access</title>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<div class="frame">
+  <header class="bar">
+    <span class="mark" aria-hidden="true"></span>
+    <span class="product">RASA <span class="thin">for Jellyfin</span></span>
+    <span class="version" id="version"></span>
+  </header>
+
+  <main id="main">
+
+    <!-- Journey step 4 -->
+    <section class="screen" data-screen="welcome">
+      <h1 id="welcome-title">Let's make your server reachable from anywhere</h1>
+      <p class="lede" id="welcome-lede">
+        RASA gives your Jellyfin server its own web address and a proper security
+        certificate, sets up your router, and tells Jellyfin about it. It takes
+        about seven minutes, and you only need to be at the keyboard for three of
+        the steps.
+      </p>
+      <div class="notice" id="repair-notice" hidden>
+        <strong>You've set this up before.</strong>
+        <span id="repair-detail"></span>
+        Running setup again will check everything over and repair whatever needs it.
+      </div>
+      <div class="actions">
+        <button class="primary" data-action="start" id="welcome-button">Set up remote access</button>
+      </div>
+    </section>
+
+    <!-- Journey step 5 -->
+    <section class="screen" data-screen="checking">
+      <h1>Checking things over</h1>
+      <p class="lede">Working out what your network can do. Nothing is being changed yet.</p>
+      <ul class="steps" id="checks"></ul>
+    </section>
+
+    <!-- Blocked -->
+    <section class="screen" data-screen="blocked">
+      <h1 id="blocked-title">Setup can't continue yet</h1>
+      <div class="problem" id="blocked-problem"></div>
+      <div class="actions" id="blocked-actions"></div>
+    </section>
+
+    <!-- Journey step 6 -->
+    <section class="screen" data-screen="jellyfin">
+      <h1>Sign in to Jellyfin</h1>
+      <p class="lede" id="jellyfin-found"></p>
+      <form id="signin-form" autocomplete="off">
+        <div class="field">
+          <label for="jf-user">Jellyfin username</label>
+          <input id="jf-user" name="username" type="text" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label for="jf-pass">Password</label>
+          <input id="jf-pass" name="password" type="password" autocomplete="current-password">
+        </div>
+        <p class="hint">This must be the account you set Jellyfin up with. RASA needs
+        administrator access to change your server's network settings, and your
+        password is sent only to your own server.</p>
+        <div class="actions">
+          <button class="primary" type="submit">Sign in</button>
+          <button class="link" type="button" data-toggle="apikey">Use an API key instead</button>
+        </div>
+      </form>
+      <form id="apikey-form" hidden autocomplete="off">
+        <div class="field">
+          <label for="jf-key">Jellyfin API key</label>
+          <input id="jf-key" name="api_key" type="password" spellcheck="false">
+        </div>
+        <p class="hint">In Jellyfin: Dashboard → API Keys → add a key.</p>
+        <div class="actions">
+          <button class="primary" type="submit">Continue</button>
+          <button class="link" type="button" data-toggle="password">Use my password instead</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Journey step 7 -->
+    <section class="screen" data-screen="dynu">
+      <h1>Create your free address account</h1>
+      <p class="lede">
+        Your web address comes from Dynu, who give them away free. The account is
+        yours, not RASA's — nobody else can change or take your address.
+      </p>
+      <ol class="numbered">
+        <li>Open Dynu and create an account. It asks for an email address and a password.</li>
+        <li>Once you're signed in, go to <strong>Control Panel → API Credentials</strong>.</li>
+        <li>Copy the API key and paste it below.</li>
+      </ol>
+      <div class="actions">
+        <button class="secondary" type="button" data-action="open-dynu">Open Dynu sign-up</button>
+      </div>
+      <form id="dynu-form" autocomplete="off">
+        <div class="field">
+          <label for="dynu-key">Dynu API key</label>
+          <input id="dynu-key" name="key" type="password" spellcheck="false" placeholder="Paste it here">
+        </div>
+        <div class="actions">
+          <button class="primary" type="submit">Continue</button>
+          <button class="link" type="button" data-action="paste">Paste from clipboard</button>
+        </div>
+      </form>
+      <p class="hint">RASA stores this key on this computer only, protected by your
+      operating system. It's what keeps your address pointing at your home
+      connection after RASA is gone.</p>
+    </section>
+
+    <!-- Journey step 8 -->
+    <section class="screen" data-screen="name">
+      <h1>What should your server be called?</h1>
+      <form id="name-form" autocomplete="off">
+        <div class="namerow">
+          <input id="name-label" type="text" spellcheck="false" autocapitalize="off"
+                 placeholder="mymedia" aria-label="Server name">
+          <select id="name-parent" aria-label="Address ending"></select>
+        </div>
+        <p class="preview" id="name-preview"></p>
+        <p class="advice" id="name-advice"></p>
+        <div class="suggestions" id="name-suggestions" hidden>
+          <p class="hint">Available with the same name:</p>
+          <div class="chips" id="name-chips"></div>
+        </div>
+        <div class="actions">
+          <button class="primary" type="submit" id="name-submit">Use this address</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Journey step 9 -->
+    <section class="screen" data-screen="port">
+      <h1 id="port-title">Opening the door</h1>
+      <p class="lede" id="port-lede"></p>
+      <div id="port-guide" hidden>
+        <h2 id="port-router"></h2>
+        <ol class="numbered" id="port-steps"></ol>
+        <table class="values">
+          <caption>Type these exactly</caption>
+          <tbody id="port-values"></tbody>
+        </table>
+        <p class="warn" id="port-reservation" hidden></p>
+      </div>
+      <div class="actions">
+        <button class="primary" data-action="port-open">Test again</button>
+        <button class="link" data-action="port-skip">Continue without it</button>
+      </div>
+    </section>
+
+    <!-- Journey step 10 and 11 -->
+    <section class="screen" data-screen="setup">
+      <h1>Setting everything up</h1>
+      <p class="lede">This takes a couple of minutes. You can leave it running.</p>
+      <ul class="steps" id="setup"></ul>
+    </section>
+
+    <!-- Journey step 12 -->
+    <section class="screen" data-screen="done">
+      <h1>Your server is reachable</h1>
+      <p class="lede">Use this address from anywhere. It works in a browser and in
+      every Jellyfin app.</p>
+      <div class="address">
+        <code id="final-url"></code>
+        <div class="actions">
+          <button class="secondary" data-action="copy">Copy</button>
+          <button class="secondary" data-action="open">Open</button>
+        </div>
+      </div>
+      <p class="advice" id="reach-note"></p>
+      <div class="warnings" id="warnings" hidden>
+        <h2>Worth knowing</h2>
+        <ul id="warning-list"></ul>
+      </div>
+      <div class="notice">
+        <strong>Everything you need is saved.</strong>
+        Your address, your port forwarding details and where to find the logs are
+        written to <code id="recovery-path"></code>. Keep it — RASA doesn't need to
+        stay installed, but your remote access keeps working.
+      </div>
+      <div class="actions">
+        <button class="primary" data-action="quit">Finish</button>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="foot">
+    <span id="status" role="status" aria-live="polite"></span>
+  </footer>
+</div>
+<script src="/assets/app.js"></script>
+</body>
+</html>

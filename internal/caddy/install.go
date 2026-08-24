@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -184,56 +183,9 @@ func (in *Installer) Version(ctx context.Context) string {
 	return firstLine(strings.TrimSpace(string(out)))
 }
 
-// Stage copies a bundled binary into dstDir, which is where it must live to
-// outlive RASA's own install directory.
-//
-// Copying rather than pointing the service at the install directory is the
-// whole reason the uninstaller can remove RASA without taking the proxy with
-// it (SPEC.md §3).
+// Stage copies the bundled Caddy somewhere it will survive RASA's removal.
 func Stage(src, dstDir string) (string, error) {
-	dst := filepath.Join(dstDir, BinaryName())
-	if sameFile(src, dst) {
-		return dst, nil
-	}
-	source, err := os.Open(src)
-	if err != nil {
-		return "", err
-	}
-	defer source.Close()
-
-	// A running service holds the destination open on Windows, so write beside
-	// it and rename — the same reason the state store does.
-	tmp := dst + ".new"
-	out, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
-	if err != nil {
-		return "", err
-	}
-	if _, err := io.Copy(out, source); err != nil {
-		out.Close()
-		os.Remove(tmp)
-		return "", err
-	}
-	if err := out.Close(); err != nil {
-		os.Remove(tmp)
-		return "", err
-	}
-	if err := os.Rename(tmp, dst); err != nil {
-		os.Remove(tmp)
-		return "", err
-	}
-	return dst, nil
-}
-
-func sameFile(a, b string) bool {
-	fa, err := os.Stat(a)
-	if err != nil {
-		return false
-	}
-	fb, err := os.Stat(b)
-	if err != nil {
-		return false
-	}
-	return os.SameFile(fa, fb)
+	return service.StageBinary(src, dstDir, BinaryName())
 }
 
 func writeFile(path, text string) error {

@@ -1,0 +1,347 @@
+/* RASA wizard styling.
+ *
+ * Deliberately plain. This is an installer someone runs once while slightly
+ * anxious about opening a port on their home network, so the priorities are
+ * legibility and calm rather than personality. Everything is one file with no
+ * build step and no external font, which is also what lets the page load under
+ * a policy that permits nothing from anywhere else.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --ink: #14171c;
+  --ink-soft: #565d68;
+  --page: #f6f7f9;
+  --card: #ffffff;
+  --line: #dfe3e8;
+  --accent: #2f6f4f;
+  --accent-ink: #ffffff;
+  --good: #2f6f4f;
+  --warn: #8a5a00;
+  --bad: #a13224;
+  --focus: #2f6f4f;
+
+  --radius: 10px;
+  --gap: 20px;
+  --measure: 62ch;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e8eaed;
+    --ink-soft: #a3abb5;
+    --page: #14171b;
+    --card: #1c2026;
+    --line: #2d333b;
+    --accent: #6fbf8f;
+    --accent-ink: #10231a;
+    --good: #6fbf8f;
+    --warn: #e0b055;
+    --bad: #e08272;
+    --focus: #6fbf8f;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.frame {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* Header ------------------------------------------------------------------ */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 0 8px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.mark {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.product { color: var(--ink); font-weight: 600; letter-spacing: -0.01em; }
+.thin { font-weight: 400; color: var(--ink-soft); }
+.version { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* Screens ----------------------------------------------------------------- */
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 12px 0 32px;
+}
+
+.screen { display: none; }
+.screen[data-active] { display: block; }
+
+h1 {
+  font-size: 27px;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  margin: 0 0 12px;
+  text-wrap: balance;
+}
+
+h2 {
+  font-size: 16px;
+  margin: 22px 0 8px;
+}
+
+.lede {
+  margin: 0 0 22px;
+  max-width: var(--measure);
+  color: var(--ink-soft);
+}
+
+.hint {
+  font-size: 14px;
+  color: var(--ink-soft);
+  max-width: var(--measure);
+}
+
+/* Progress lines ---------------------------------------------------------- */
+
+.steps { list-style: none; margin: 0; padding: 0; }
+
+.steps li {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.steps li:last-child { border-bottom: 0; }
+
+.steps .glyph {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+.steps li[data-state="done"] .glyph { color: var(--good); }
+.steps li[data-state="failed"] .glyph { color: var(--bad); }
+.steps li[data-state="running"] .glyph { color: var(--accent); }
+
+.steps .label { display: block; }
+.steps .note { display: block; font-size: 14px; color: var(--ink-soft); }
+.steps li[data-state="pending"] { opacity: 0.5; }
+
+/* Forms ------------------------------------------------------------------- */
+
+.field { margin-bottom: 16px; max-width: 420px; }
+
+label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+input[type="text"], input[type="password"], select {
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+input:focus-visible, select:focus-visible, button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.namerow {
+  display: flex;
+  gap: 10px;
+  max-width: 520px;
+  align-items: stretch;
+}
+
+.namerow input { flex: 1 1 auto; }
+.namerow select { flex: 0 0 auto; width: auto; }
+
+.preview {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 15px;
+  margin: 14px 0 4px;
+  color: var(--ink);
+  word-break: break-all;
+}
+
+.advice { font-size: 14px; margin: 4px 0 0; color: var(--ink-soft); min-height: 1.4em; }
+.advice[data-tone="good"] { color: var(--good); }
+.advice[data-tone="bad"] { color: var(--bad); }
+
+.suggestions { margin-top: 18px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.chips button {
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.chips button:hover { border-color: var(--accent); }
+
+/* Buttons ----------------------------------------------------------------- */
+
+.actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 22px;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+
+button:disabled { opacity: 0.5; cursor: default; }
+
+.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 1px solid transparent;
+  padding: 10px 18px;
+  font-weight: 600;
+}
+
+.secondary {
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  padding: 10px 16px;
+}
+
+.link {
+  background: none;
+  border: 0;
+  color: var(--ink-soft);
+  padding: 10px 2px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Blocks ------------------------------------------------------------------ */
+
+.notice, .problem {
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin: 20px 0;
+  max-width: var(--measure);
+}
+
+.problem { border-left: 4px solid var(--bad); }
+.problem .why { color: var(--ink-soft); margin: 8px 0 0; }
+.problem .partial { color: var(--ink-soft); font-size: 14px; margin: 10px 0 0; }
+
+.warn { color: var(--warn); }
+
+.numbered { max-width: var(--measure); padding-left: 20px; }
+.numbered li { margin-bottom: 8px; }
+
+.values {
+  border-collapse: collapse;
+  margin: 16px 0;
+  width: 100%;
+  max-width: 480px;
+}
+
+.values caption {
+  text-align: left;
+  font-size: 14px;
+  font-weight: 600;
+  padding-bottom: 6px;
+}
+
+.values th, .values td {
+  text-align: left;
+  padding: 8px 12px 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 15px;
+}
+
+.values th { color: var(--ink-soft); font-weight: 400; white-space: nowrap; }
+
+.values td {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  user-select: all;
+}
+
+/* Final address ----------------------------------------------------------- */
+
+.address {
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin: 8px 0 4px;
+}
+
+.address code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 19px;
+  word-break: break-all;
+}
+
+.address .actions { margin-top: 16px; }
+
+.warnings ul { padding-left: 20px; max-width: var(--measure); }
+.warnings li { margin-bottom: 8px; color: var(--warn); }
+
+/* Footer ------------------------------------------------------------------ */
+
+.foot {
+  padding: 12px 0 20px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  min-height: 2.4em;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .steps li[data-state="running"] .glyph {
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+}

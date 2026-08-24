@@ -1,6 +1,7 @@
 package rasaerr
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -174,5 +175,58 @@ func TestWithDetailAccumulates(t *testing.T) {
 	e := NoRouteToInternet(nil).WithDetail("probe %d failed", 1).WithDetail("probe %d failed", 2)
 	if !strings.Contains(e.Detail, "probe 1") || !strings.Contains(e.Detail, "probe 2") {
 		t.Fatalf("detail did not accumulate: %q", e.Detail)
+	}
+}
+
+// UserFacing crosses the wire to the wizard's UI, so its field names are part
+// of the contract. They were once Go-cased while every other model field was
+// snake_case, and the blocked screen rendered blank.
+func TestUserFacingWireShape(t *testing.T) {
+	e := JellyfinNotFound(nil)
+	body, err := json.Marshal(e.User())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"code", "message", "actions"} {
+		if _, ok := decoded[key]; !ok {
+			t.Errorf("the encoded error has no %q field: %s", key, body)
+		}
+	}
+
+	// The action kind travels as a name. An integer would silently change
+	// meaning if the constants were ever reordered.
+	actions, _ := decoded["actions"].([]any)
+	if len(actions) == 0 {
+		t.Fatal("no actions were encoded")
+	}
+	first, _ := actions[0].(map[string]any)
+	if kind, _ := first["kind"].(string); kind != "retry" {
+		t.Errorf("action kind = %v, want the string \"retry\"", first["kind"])
+	}
+
+	// Detail must not have a route to the wire at all.
+	if strings.Contains(string(body), "Detail") || strings.Contains(string(body), "detail") {
+		t.Errorf("technical detail reached the user projection: %s", body)
+	}
+}
+
+func TestActionKindRoundTrips(t *testing.T) {
+	for _, k := range []ActionKind{ActionRetry, ActionAlternate, ActionExternal, ActionCancel} {
+		body, err := json.Marshal(k)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var back ActionKind
+		if err := json.Unmarshal(body, &back); err != nil {
+			t.Fatalf("%s: %v", k, err)
+		}
+		if back != k {
+			t.Errorf("%s round-tripped to %s", k, back)
+		}
 	}
 }
