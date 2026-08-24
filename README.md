@@ -61,7 +61,7 @@ internal/rasaerr/    typed errors: user-facing copy separated from technical det
 internal/state/      resumable setup state machine and its persistence
 internal/secrets/    credential storage (DPAPI on Windows, 0600 file on Linux)
 internal/paths/      where logs, state and credentials live
-internal/probe/      what pre-flight observes (types; probing is task 3)
+internal/probe/      pre-flight: Jellyfin, public address, router/UPnP, ports
 internal/mode/       chooses public / IPv6 / mesh access from probe results
 internal/dynu/       Dynu v2 API client
 ```
@@ -95,7 +95,7 @@ Task numbers refer to [SPEC.md §18](SPEC.md#18-implementation-tasks).
 - [x] **1** — Project skeleton, state store, structured logging with tested redaction
 - [x] **1b** — Error catalogue with user-facing copy
 - [x] **2** — Dynu v2 API client
-- [ ] **3** — Probe suite (Jellyfin discovery, public IP, CGNAT detection)
+- [x] **3** — Probe suite (Jellyfin discovery, public IP, CGNAT detection)
 - [x] **4** — Mode router
 - [ ] **5** — Port mapper and router instruction guide
 - [ ] **6** — Caddy service installer

@@ -16,12 +16,12 @@ import (
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/state"
 )
 
-// Preferred and fallback listener ports. DNS-01 issuance removes any need for
-// port 80, so a busy 443 is an inconvenience rather than an obstacle: Jellyfin
-// clients accept a port in the server URL.
+// Preferred and fallback listener ports, re-exported so decision logic reads
+// naturally here. They are defined in probe because probing them happens
+// first and this package already depends on it.
 const (
-	PortPreferred = 443
-	PortFallback  = 8443
+	PortPreferred = probe.PortPreferred
+	PortFallback  = probe.PortFallback
 )
 
 // Blocker explains why a mode could not be reached, for cases the user must

@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -14,7 +15,9 @@ import (
 	"runtime"
 
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/logging"
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/mode"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/paths"
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/probe"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/secrets"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/state"
 )
@@ -35,7 +38,7 @@ func main() {
 		return
 	}
 
-	if err := run(*root, *verbose); err != nil {
+	if err := run(context.Background(), *root, *verbose); err != nil {
 		// Nothing user-facing has a UI yet; once the wizard exists this becomes
 		// rasaerr.UserMessage(err) rendered on screen, never a raw error.
 		fmt.Fprintln(os.Stderr, "rasa:", err)
@@ -43,7 +46,7 @@ func main() {
 	}
 }
 
-func run(root string, verbose bool) error {
+func run(ctx context.Context, root string, verbose bool) error {
 	layout := paths.Default()
 	if root != "" {
 		layout = paths.UnderRoot(root)
@@ -100,11 +103,64 @@ func run(root string, verbose bool) error {
 
 	report(layout, creds, st, names)
 
+	// Phase 2: discover and probe. Everything downstream branches on this,
+	// so it runs even on a repeat launch — the network may have changed.
+	plog := log.WithPhase("probe")
+	res := probe.New(plog).Run(ctx)
+	decision := mode.Choose(res)
+
+	plog.Decision("mode", string(decision.Mode), decision.Reason,
+		slog.Int("listen_port", decision.ListenPort),
+		slog.Bool("needs_mapping", decision.NeedsPortMapping),
+		slog.Bool("needs_manual_forward", decision.NeedsManualForward),
+		slog.String("blocker", string(decision.Blocker)),
+	)
+
+	reportProbe(res, decision)
+
+	if err := st.Advance(state.Probed); err != nil {
+		log.Warn("could not record probe phase", slog.Any("err", err))
+	}
+	st.JellyfinAddress = res.Jellyfin.Address
+	st.JellyfinVersion = res.Jellyfin.Version
+	st.Mode = decision.Mode
+	st.ListenPort = decision.ListenPort
+	for _, w := range decision.StateWarnings() {
+		st.AddWarning(w.Code, w.Text)
+	}
+
 	if err := store.Save(st); err != nil {
 		return fmt.Errorf("saving state: %w", err)
 	}
 	log.Info("rasa exiting", slog.String("phase", string(st.Phase)))
 	return nil
+}
+
+// reportProbe prints the four pre-flight lines from journey step 5, then what
+// was decided from them. The wizard will render this; for now it is stdout.
+func reportProbe(res probe.Result, d mode.Decision) {
+	s := res.Summarize()
+	fmt.Println("\nChecking things over")
+	for _, line := range []string{s.Jellyfin, s.Internet, s.Router, s.Ports} {
+		fmt.Printf("  %s\n", line)
+	}
+
+	fmt.Println("\nDecision")
+	if d.Blocked() {
+		fmt.Printf("  blocked: %s\n", d.Reason)
+	} else {
+		fmt.Printf("  mode %s on port %d\n", d.Mode, d.ListenPort)
+		fmt.Printf("  because %s\n", d.Reason)
+		switch {
+		case d.NeedsPortMapping:
+			fmt.Println("  next: open the port automatically")
+		case d.NeedsManualForward:
+			fmt.Println("  next: guided manual port forwarding")
+		}
+	}
+	for _, w := range d.Warnings {
+		fmt.Printf("  warning: %s\n", w.Text)
+	}
 }
 
 // report prints the current status. This stands in for the wizard's welcome

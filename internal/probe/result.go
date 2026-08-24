@@ -57,7 +57,17 @@ type Internet struct {
 func (i Internet) HasV4() bool { return i.PublicV4.IsValid() }
 
 // HasV6 reports whether a globally routable IPv6 address was observed.
-func (i Internet) HasV6() bool { return i.PublicV6.IsValid() && i.PublicV6.IsGlobalUnicast() }
+//
+// An IPv4-mapped address (::ffff:203.0.113.5) is an IPv4 address wearing an
+// IPv6 costume and must not count. Mode A6 exists precisely because IPv6 is a
+// separate path to the host, so treating a mapped address as IPv6 would route
+// a connection that has none down it.
+func (i Internet) HasV6() bool {
+	return i.PublicV6.IsValid() &&
+		i.PublicV6.Is6() &&
+		!i.PublicV6.Is4In6() &&
+		i.PublicV6.IsGlobalUnicast()
+}
 
 // Router is what the local gateway will admit to.
 type Router struct {
