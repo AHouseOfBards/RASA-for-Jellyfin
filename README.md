@@ -50,6 +50,15 @@ go test ./...
 go run ./cmd/rasa -root ./.devdata    # -root avoids needing admin during development
 ```
 
+That opens the wizard in your browser. Add `-no-browser` to print the address
+instead, which is what you want over SSH or in a container.
+
+**Development builds use Let's Encrypt staging.** Production allows five failed
+validations per hostname per hour and 50 certificates per registered domain per
+week, and a day of debugging against it leaves you locked out of the thing you
+are debugging. A release build opts in with `-ldflags "-X main.staging=0"`; a
+single run can opt in with `-production-certificates`.
+
 Requires Go 1.26 or newer. There are currently no third-party dependencies.
 
 ### Layout
@@ -70,8 +79,11 @@ internal/routerguide/ per-router forwarding instructions from routers.json
 internal/reach/      external reachability checks (reachable / unreachable / inconclusive)
 internal/dnswait/    waits for records on authoritative nameservers before ACME
 internal/jellyfin/   configures Jellyfin's network settings over its own API
-internal/caddy/      generates the proxy configuration
+internal/domains/    the parent domains on offer, and hostname validation
+internal/caddy/      generates the proxy configuration and installs it as a service
 internal/service/    registers the OS service and scheduled task
+internal/wizard/     the setup flow: sequencing, branching, and the model the UI renders
+internal/ui/         serves that model as a local web application
 internal/ddns/       keeps the published address current
 internal/recovery/   recovery file and diagnostic bundle
 ```
@@ -111,10 +123,10 @@ Task numbers refer to [SPEC.md §18](SPEC.md#18-implementation-tasks).
 - [x] **6** — Caddy service installer
 - [x] **7** — DNS propagation waiter
 - [x] **8** — Jellyfin configuration client
-- [ ] **9** — Wizard UI
+- [x] **9** — Wizard UI
 - [~] **10** — Packaging inputs written; installers not built
 - [x] **11** — Scheduled task installer
-- [~] **12** — State file done; repair flow needs the wizard
+- [x] **12** — Repair detection, credential reuse, and deliberate removal of remote access
 - [x] **13** — Diagnostic bundle and recovery file
 
 ## Contributing

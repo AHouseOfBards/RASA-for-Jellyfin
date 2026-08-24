@@ -62,7 +62,10 @@ type Options struct {
 	CertWait     CertWaiter
 	Availability AvailabilityChecker
 	Proxy        ProxyInstaller
-	Now          func() time.Time
+	// RemoveFirewall takes the inbound rule down. A seam because the real one
+	// shells out to netsh, which a test must not be allowed to do.
+	RemoveFirewall func(ctx context.Context) error
+	Now            func() time.Time
 }
 
 // Wizard owns the setup flow and the model the UI renders.

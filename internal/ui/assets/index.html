@@ -33,6 +33,7 @@
       </div>
       <div class="actions">
         <button class="primary" data-action="start" id="welcome-button">Set up remote access</button>
+        <button class="link" data-action="remove" id="remove-button" hidden>Remove remote access</button>
       </div>
     </section>
 
@@ -159,6 +160,29 @@
       <h1>Setting everything up</h1>
       <p class="lede">This takes a couple of minutes. You can leave it running.</p>
       <ul class="steps" id="setup"></ul>
+    </section>
+
+    <!-- Taking it down again -->
+    <section class="screen" data-screen="removing">
+      <h1>Removing remote access</h1>
+      <p class="lede">Undoing everything setup installed. Your logs and your
+      Jellyfin server are left alone.</p>
+      <ul class="steps" id="removal"></ul>
+    </section>
+
+    <section class="screen" data-screen="removed">
+      <h1>Remote access has been removed</h1>
+      <p class="lede" id="removed-detail"></p>
+      <div class="warnings" id="removed-warnings" hidden>
+        <h2>Worth knowing</h2>
+        <ul id="removed-warning-list"></ul>
+      </div>
+      <p class="hint">Your Jellyfin server is untouched and still works on your
+      home network. Your logs are still where they were.</p>
+      <div class="actions">
+        <button class="primary" data-action="quit">Close</button>
+        <button class="link" data-action="start">Set it up again</button>
+      </div>
     </section>
 
     <!-- Journey step 12 -->

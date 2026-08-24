@@ -235,6 +235,9 @@ func (o *Options) defaults() {
 	if o.Availability == nil {
 		o.Availability = domains.NewChecker(o.Log)
 	}
+	if o.RemoveFirewall == nil {
+		o.RemoveFirewall = service.RemoveFirewallRule
+	}
 	if o.Now == nil {
 		o.Now = time.Now
 	}

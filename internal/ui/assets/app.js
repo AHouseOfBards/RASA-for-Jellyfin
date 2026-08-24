@@ -233,12 +233,27 @@ function renderDone() {
   box.hidden = list.childElementCount === 0;
 }
 
+function renderRemoved() {
+  document.getElementById("removed-detail").textContent =
+    "Nothing is listening for connections from outside any more, and the stored key has been deleted.";
+
+  const list = document.getElementById("removed-warning-list");
+  list.replaceChildren();
+  for (const w of model.warnings || []) {
+    const li = document.createElement("li");
+    li.textContent = w.text;
+    list.appendChild(li);
+  }
+  document.getElementById("removed-warnings").hidden = list.childElementCount === 0;
+}
+
 function render(next) {
   model = next;
 
   document.getElementById("version").textContent = model.version || "";
   renderSteps("checks", model.checks);
   renderSteps("setup", model.setup);
+  renderSteps("removal", model.removal);
 
   for (const b of document.querySelectorAll("button")) {
     if (b.dataset.action !== "copy" && b.dataset.action !== "open") {
@@ -248,6 +263,7 @@ function render(next) {
   document.getElementById("name-submit").disabled =
     model.busy || document.getElementById("name-label").value.trim().length === 0;
 
+  document.getElementById("remove-button").hidden = !model.repair;
   if (model.repair) {
     const notice = document.getElementById("repair-notice");
     notice.hidden = false;
@@ -269,6 +285,7 @@ function render(next) {
   if (model.screen === "name") renderName();
   if (model.screen === "port") renderPort();
   if (model.screen === "done") renderDone();
+  if (model.screen === "removed") renderRemoved();
 
   renderProblem(model.err);
   if (model.err && model.screen !== "blocked") {
@@ -400,6 +417,16 @@ function wire() {
     switch (action) {
       case "start":
         post("/api/start");
+        break;
+      case "remove":
+        // The one destructive thing in the product, so it asks. Uninstalling
+        // RASA deliberately leaves remote access running; this is the button
+        // that does not.
+        if (confirm("Remove remote access?
+
+Your server will stop being reachable from outside your home network. Jellyfin itself, and your logs, are left alone.")) {
+          post("/api/remove");
+        }
         break;
       case "port-open":
         post("/api/port/open");

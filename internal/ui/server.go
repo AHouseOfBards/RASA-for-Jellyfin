@@ -162,6 +162,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/install", s.guard(s.async("install", func(ctx context.Context, body request) error {
 		return s.w.Install(ctx)
 	})))
+	s.mux.HandleFunc("/api/remove", s.guard(s.async("remove", func(ctx context.Context, body request) error {
+		return s.w.RemoveRemoteAccess(ctx)
+	})))
 	s.mux.HandleFunc("/api/quit", s.guard(s.handleQuit))
 }
 

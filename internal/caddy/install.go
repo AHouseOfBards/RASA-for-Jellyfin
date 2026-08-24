@@ -146,6 +146,15 @@ func (in *Installer) Install(ctx context.Context, cfg Config, env map[string]str
 		return fmt.Errorf("starting the proxy service: %w", err)
 	}
 	in.log("started the proxy service", slog.String("name", def.Name))
+
+	// The host firewall comes last, and its failure is not fatal. A machine
+	// with no firewall enabled reaches here having already succeeded, and a
+	// machine where the rule could not be written still works for anyone whose
+	// traffic the firewall does not stop - reporting a failed setup would be
+	// wrong in both cases.
+	if err := service.AllowProgram(ctx, in.BinaryPath, in.Log); err != nil {
+		in.log("could not write a firewall rule", slog.Any("err", err))
+	}
 	return nil
 }
 

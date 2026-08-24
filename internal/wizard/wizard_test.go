@@ -32,9 +32,20 @@ const testKey = "dynu-api-key-that-must-never-appear-anywhere"
 // Fakes.
 
 type fakeDynu struct {
-	created  []dynu.CreateDomainRequest
-	createFn func(dynu.CreateDomainRequest) (*dynu.Domain, error)
-	listErr  error
+	created     []dynu.CreateDomainRequest
+	createFn    func(dynu.CreateDomainRequest) (*dynu.Domain, error)
+	listErr     error
+	deleted     int
+	unpublished int
+}
+
+func (f *fakeDynu) Unpublish(ctx context.Context, id int64, name string) error {
+	f.unpublished++
+	return nil
+}
+func (f *fakeDynu) DeleteDomain(ctx context.Context, id int64) error {
+	f.deleted++
+	return nil
 }
 
 func (f *fakeDynu) ListDomains(ctx context.Context) ([]dynu.Domain, error) {
@@ -161,8 +172,9 @@ type fakeAvail struct{ result domains.Availability }
 func (f *fakeAvail) Check(ctx context.Context, hostname string) domains.Availability { return f.result }
 
 type fakeServices struct {
-	services []service.Definition
-	timers   []service.Timer
+	services         []service.Definition
+	timers           []service.Timer
+	removeServiceErr error
 }
 
 func (f *fakeServices) InstallService(ctx context.Context, d service.Definition) error {
@@ -172,7 +184,7 @@ func (f *fakeServices) InstallService(ctx context.Context, d service.Definition)
 func (f *fakeServices) StartService(ctx context.Context, n string) error { return nil }
 func (f *fakeServices) StopService(ctx context.Context, n string) error  { return nil }
 func (f *fakeServices) RemoveService(ctx context.Context, n string) error {
-	return nil
+	return f.removeServiceErr
 }
 func (f *fakeServices) ServiceStatus(ctx context.Context, n string) (service.Status, error) {
 	return service.StatusRunning, nil
@@ -241,22 +253,23 @@ func newHarness(t *testing.T, tweak func(*Options)) *harness {
 	}
 
 	opts := Options{
-		Layout:       layout,
-		Log:          h.log,
-		Store:        state.NewStore(layout.StateFile()),
-		Secrets:      secrets.NewFileStore(layout.SecretFile()),
-		Version:      "test",
-		SyncBinary:   filepath.Join(dir, "rasa-sync"),
-		Probe:        func(ctx context.Context) probe.Result { return h.seed },
-		NewDynu:      func(string) DynuAPI { return h.dynu },
-		NewJellyfin:  func(string, string) JellyfinAPI { return h.jf },
-		NewMapper:    func(string, string) PortMapper { return &fakeMapper{} },
-		NewServices:  func() (service.Manager, error) { return h.svc, nil },
-		NewReach:     func(netip.Addr) Reacher { return &fakeReach{status: reach.Reachable} },
-		DNSWait:      h.dns,
-		CertWait:     &fakeCert{},
-		Availability: &fakeAvail{result: domains.Unclaimed},
-		Proxy:        h.prox,
+		Layout:         layout,
+		Log:            h.log,
+		Store:          state.NewStore(layout.StateFile()),
+		Secrets:        secrets.NewFileStore(layout.SecretFile()),
+		Version:        "test",
+		SyncBinary:     filepath.Join(dir, "rasa-sync"),
+		Probe:          func(ctx context.Context) probe.Result { return h.seed },
+		NewDynu:        func(string) DynuAPI { return h.dynu },
+		NewJellyfin:    func(string, string) JellyfinAPI { return h.jf },
+		NewMapper:      func(string, string) PortMapper { return &fakeMapper{} },
+		NewServices:    func() (service.Manager, error) { return h.svc, nil },
+		NewReach:       func(netip.Addr) Reacher { return &fakeReach{status: reach.Reachable} },
+		DNSWait:        h.dns,
+		CertWait:       &fakeCert{},
+		Availability:   &fakeAvail{result: domains.Unclaimed},
+		Proxy:          h.prox,
+		RemoveFirewall: func(context.Context) error { return nil },
 	}
 	if tweak != nil {
 		tweak(&opts)

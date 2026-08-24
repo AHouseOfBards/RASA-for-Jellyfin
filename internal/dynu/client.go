@@ -193,6 +193,27 @@ func (c *Client) UpdateAddresses(ctx context.Context, id int64, name string, v4,
 	return c.GetDomain(ctx, id)
 }
 
+// Unpublish clears both address families from a hostname, leaving the name on
+// the account but resolving nowhere.
+//
+// This is what "remove remote access" should do rather than DeleteDomain. The
+// hostname belongs to the user's account, not to RASA, and deleting it would
+// hand their chosen name back to the pool on the strength of them uninstalling
+// an installer. Clearing the addresses achieves the thing that actually
+// matters — a name that no longer points at their home connection.
+//
+// NOT YET VERIFIED against the live API. The family flags are documented to
+// control whether an address is published at all (see the Domain comment), so
+// setting both false should unpublish; that has been exercised in the
+// affirmative direction only.
+func (c *Client) Unpublish(ctx context.Context, id int64, name string) error {
+	if id <= 0 {
+		return fmt.Errorf("refusing to modify invalid hostname id %d", id)
+	}
+	req := CreateDomainRequest{Name: name, TTL: DefaultTTL, IPv4: false, IPv6: false}
+	return c.do(ctx, http.MethodPost, fmt.Sprintf("/dns/%d", id), req, nil)
+}
+
 // DeleteDomain removes a hostname from the account.
 //
 // Deleting an absent hostname is treated as success, so cleanup after a failed

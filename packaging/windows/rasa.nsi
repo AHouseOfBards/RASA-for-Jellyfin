@@ -31,11 +31,14 @@ Section "Install"
   CreateDirectory "$COMMONPROGRAMDATA\RASA"
   CreateDirectory "$COMMONPROGRAMDATA\RASA\logs"
 
-  ; Firewall rules are scoped to the Caddy binary rather than to a port,
+  ; The firewall rule is scoped to the Caddy binary rather than to a port,
   ; because the listener port is not known until setup runs - and a
-  ; program-scoped rule is tighter than opening ports outright.
-  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="RASA for Jellyfin"'
-  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="RASA for Jellyfin" dir=in action=allow program="$INSTDIR\caddy.exe" enable=yes profile=any'
+  ; program-scoped rule is tighter than opening ports outright. It is written
+  ; by rasa.exe rather than here, because it has to name the copy of Caddy that
+  ; actually runs: RASA copies both helper binaries into
+  ; COMMONPROGRAMDATA\RASA\bin at first launch so that uninstalling INSTDIR
+  ; does not take the running proxy with it, and a rule pointing at INSTDIR
+  ; would stop matching the moment that happened.
 
   WriteUninstaller "$INSTDIR\uninstall.exe"
   CreateShortcut "$SMPROGRAMS\${APPNAME}.lnk" "$INSTDIR\rasa.exe"
@@ -53,8 +56,15 @@ Section "Uninstall"
   ; Only the wizard is removed. Caddy, the scheduled task and the data
   ; directory stay - removing them would take remote access down, which is the
   ; opposite of what uninstalling a setup app should mean here.
+  ; Everything in INSTDIR goes, including the shipped copies of caddy.exe and
+  ; rasa-sync.exe. The copies that run live in COMMONPROGRAMDATA\RASA\bin and
+  ; are untouched by this, as are the firewall rule, the service and the
+  ; scheduled task.
   Delete "$INSTDIR\rasa.exe"
+  Delete "$INSTDIR\rasa-sync.exe"
+  Delete "$INSTDIR\caddy.exe"
   Delete "$INSTDIR\uninstall.exe"
+  RMDir "$INSTDIR"
   Delete "$SMPROGRAMS\${APPNAME}.lnk"
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RASA"
 

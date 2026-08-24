@@ -43,6 +43,10 @@ const (
 	// ScreenDone is journey step 12: the address, and the offer to remove the
 	// installer.
 	ScreenDone Screen = "done"
+	// ScreenRemoving and ScreenRemoved are the other direction: taking remote
+	// access down deliberately, which uninstalling RASA does not do.
+	ScreenRemoving Screen = "removing"
+	ScreenRemoved  Screen = "removed"
 )
 
 // StepState is how one line on a progress screen is rendered.
@@ -179,6 +183,8 @@ type Model struct {
 
 	Checks []Step `json:"checks"`
 	Setup  []Step `json:"setup"`
+	// Removal is populated only while remote access is being taken down.
+	Removal []Step `json:"removal,omitempty"`
 
 	// Mode and Explanation report the branch the router took. The user is
 	// told, not asked.
@@ -216,6 +222,7 @@ func (m Model) clone() Model {
 	out := m
 	out.Checks = append([]Step(nil), m.Checks...)
 	out.Setup = append([]Step(nil), m.Setup...)
+	out.Removal = append([]Step(nil), m.Removal...)
 	out.Domains = append([]DomainOption(nil), m.Domains...)
 	out.Warnings = append([]Warning(nil), m.Warnings...)
 	out.Name.Suggestions = append([]string(nil), m.Name.Suggestions...)
