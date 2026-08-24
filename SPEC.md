@@ -207,6 +207,8 @@ Because RASA is deleted, a warning shown once is gone when it matters. **Write a
 3. The user copies their API key. RASA shows a paste field beneath the webview and watches the clipboard so it fills itself.
 4. RASA validates the key with a live API call before advancing.
 
+> **What was actually built, and why it differs.** Steps 2 and 3 assume a native webview. The shipped wizard is HTML served from loopback and displayed in the user's browser, so Dynu's signup opens in a **new tab** and the paste field stays on RASA's page. Two constraints forced this: a real webview is a cgo dependency with its own runtime on every platform (WebView2, WKWebView), which the zero-dependency build rules out; and a browser will not read the clipboard silently, so pasting is a button the user presses rather than something that happens by itself. Neither costs a screen. Both are seams — `ui.Open` is the one function a native webview would replace.
+
 > **On OAuth.** Dynu exposes `/v2/oauth2/token`. With the webview approach it largely doesn't matter — even a full OAuth flow requires the account to exist first, so signup and CAPTCHA remain. OAuth removes one copy-paste, not a screen. Polish item.
 
 > ⚠️ **Do not scrape the key out of the page.** Injecting JS to lift the API key breaks the first time Dynu changes markup, is indistinguishable from credential theft to security tooling, and fails silently. A visible paste that always works beats an invisible one that usually does.
@@ -282,11 +284,13 @@ Happy path on Windows, ~7 minutes. Only steps 6–8 need the user at the keyboar
 | 5 | Checking things over | 15s | Watches four lines tick green | Finds Jellyfin + real port from `network.xml`, checks version floor, resolves public IP, CGNAT comparison, port ownership, runs mode router |
 | 6 | Sign in to Jellyfin | 20s | Enters admin username/password, or uses an API key | Authenticates, confirms the account is actually an admin |
 | 7 | ⚠️ **Create a Dynu account** | 2 min | Signs up in the webview, accepts ToS, clears CAPTCHA, copies the key | Hosts the webview, navigates to the credentials page, watches clipboard, validates the key |
-| 8 | Pick a name | 30s | Types one word, sees the address form underneath | Debounced availability check; cross-domain suggestions on collision |
+| 8 | Pick a name | 30s | Types one word, sees the address form underneath | Debounced availability check; **claims the hostname on Continue**; cross-domain suggestions on collision |
 | 9 | Open the port | 10s* | Usually nothing; else gets router named + exact values + **Test again** | Permanent UPnP lease request, router identification, instructions from `routers.json` |
 | 10 | Setting everything up | 2 min | Watches six lines tick green | Creates hostname + records, polls authoritative NS, installs Caddy service, DNS-01 issuance, writes Jellyfin config, registers sync task |
 | 11 | Prove it works | 10s | "Testing from outside your network…" then green | Fetches `/System/Info/Public` over the **public** path, not loopback |
 | 12 | Done | — | Gets the address with Copy / QR / Open | Writes state + recovery files, offers to uninstall itself |
+
+> **The claim moved from step 10 to step 8.** The creation call is the only authoritative availability answer there is (§8), and a collision discovered two minutes into an unattended install is a far worse experience than one discovered while the name field still has focus. Step 10 still performs the claim and finds the work already done, which the idempotency requirement demanded anyway.
 
 **Every fork happens invisibly at step 5.** A CGNAT result quietly routes to Mode A6 or B; a busy port quietly moves the listener to 8443. The user is told the outcome, never asked to decide.
 
@@ -665,13 +669,13 @@ The natural Docker deliverable is a **generated compose file** — RASA in conta
 | 3 | Probe suite | Jellyfin discovery via `network.xml`, public IP resolution, IGD WAN query, CGNAT comparison, local port ownership |
 | 4 | Mode router | Pure function over probe results — trivially unit-testable, and where bugs will hide |
 | 5 | Port mapper and router guide | UPnP IGD + NAT-PMP with permanent-lease request; router identification by IGD description, banner, MAC OUI; instruction renderer from `routers.json`; external re-verification |
-| 6 | Caddy service installer | Build with `xcaddy` + Dynu module in CI, bundle, install as a service, generate the Caddyfile from state |
+| 6 | Caddy service installer | ✅ Built and verified against a real `xcaddy` build. Validates the generated file before registering the service, so a binary missing a module fails loudly rather than inside a service that already reported success |
 | 7 | DNS propagation waiter | Poll authoritative NS until visible. Gates ACME |
 | 8 | Jellyfin config client | Authenticate, read live OpenAPI doc, write network settings, verify |
-| 9 | Wizard UI | Progress screen with live status lines; advanced overrides; QR handoff |
+| 9 | Wizard UI | ✅ Built. Flow orchestrator in `internal/wizard` (owns sequencing and branching, owns no pixels); `internal/ui` serves it from loopback with a per-run token. QR handoff outstanding |
 | 10 | Service and installer | Per-OS service registration, firewall rule, packaging |
 | 11 | Scheduled task installer | Register the Dynu sync as a Scheduled Task or systemd timer that survives RASA's removal |
-| 12 | State file and re-run mode | Detect a prior install, offer repair, component removal, Caddy replacement |
+| 12 | State file and re-run mode | ✅ Repair detection and credential reuse; deliberate removal of remote access. Caddy replacement outstanding — see decision 16 |
 | 13 | Diagnostic bundle and recovery file | Redacted zip covering all three log sources; plain-text recovery file with warnings, forwarding values, log locations. Producible from repair mode after uninstall |
 
 ### Why Go
@@ -711,7 +715,7 @@ Single static binaries per platform keep the installer simple; the UPnP, DNS, an
 | 12 | Jellyfin versions | 10.11.5 minimum, newest supported |
 | 13 | Code signing | ❌ None. Drives 7, makes SmartScreen the main adoption risk |
 | 14 | Dynu OAuth | Moot — the webview shows Dynu's own pages |
-| 15 | Uninstall | RASA is disposable. A state file at a known path enables detection and repair |
+| 15 | Uninstall | RASA is disposable. A state file at a known path enables detection and repair. **Resolved in build: the *wizard* is disposable; the proxy and the address updater stay installed, and "Remove remote access" is a screen in the wizard rather than a side effect of uninstalling** |
 | 16 | Auto-update | Not needed for RASA. **Caddy is the component that needs updating** |
 | 17 | Diagnostics | Yes — redacted, user-exportable bundle |
 | 18 | Other media servers | Jellyfin only |
@@ -730,6 +734,11 @@ Single static binaries per platform keep the installer simple; the UPnP, DNS, an
 
 - ~~**Dynu address-field names**~~ — ✅ resolved 2026-08-24; see §12. No OpenAPI document exists, so the schema was captured from live responses.
 - ~~**Dynu write endpoints**~~ — ✅ verified 2026-08-24 on a disposable hostname; see §12. Create, update, TXT add/delete, and hostname delete all confirmed, along with idempotency of re-claim and re-delete.
-- **Jellyfin configuration keys at 10.11.5** — confirm against the running server's own OpenAPI document.
+- **Jellyfin configuration keys at 10.11.5** — confirm against the running server's own OpenAPI document. No real Jellyfin server has been touched yet; the client is tested against a fake whose schema was written here, which proves parsing rather than correctness.
 - **Permanent UPnP lease support** — how many common routers honour lease duration `0`.
-- **Clipboard-watch behaviour in the webview** per platform.
+- ~~**Clipboard-watch behaviour in the webview**~~ — ✅ moot; see §7. The browser will not read the clipboard silently, so pasting is a button.
+- ~~**The generated Caddyfile**~~ — ✅ verified 2026-08-24 against a real Caddy built with `packaging/caddy/build.sh`. Both configurations RASA can produce are accepted. The `Audit` workflow re-runs this weekly.
+- ~~**The Public Suffix List allowlist**~~ — ✅ verified 2026-08-24 against the live list, and re-checked weekly by the `Audit` workflow.
+- **Certificate issuance** — no ACME call, staging or production, has ever run. `realCertWaiter` decides "issued" by inspecting what the proxy presents over loopback and rejecting Caddy's internal authority; that logic has never seen a real handshake.
+- **Service and scheduled-task registration** — `internal/service` shells out to `sc.exe`, `schtasks.exe` and `systemctl`, needs elevation, and has never been executed. The highest-risk untested surface in the project.
+- **`Unpublish`** — the Dynu call behind "Remove remote access" sets both address-family flags false. Everything else in that client is verified against a live account; this is not.
