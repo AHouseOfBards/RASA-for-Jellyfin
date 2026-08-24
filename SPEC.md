@@ -619,7 +619,17 @@ On a POSIX shell `:` is the null command and the line executes; on `cmd.exe` a l
 
 ### Building Caddy with the Dynu module
 
-Stock Caddy builds exclude DNS provider modules. The release pipeline must produce a custom binary with `xcaddy` including `caddy-dns/dynu`, per platform, bundled into each installer. **Pin the Caddy and module versions.**
+Stock Caddy ships **neither** module the generated config needs. The release pipeline must produce a custom binary per platform:
+
+```sh
+xcaddy build \
+  --with github.com/caddy-dns/dynu \
+  --with github.com/mholt/caddy-ratelimit
+```
+
+`caddy-dns/dynu` provides the DNS-01 challenge; `caddy-ratelimit` provides the `rate_limit` directive that throttles the login endpoint. A stock binary fails at start with an unrecognised-directive error — **after RASA has already reported success** — so this is worth a build-time check rather than trusting the packaging step.
+
+**Pin both versions.** An unpinned build means the proxy changes underneath users between releases.
 
 ### Unsigned distribution is the largest adoption risk
 

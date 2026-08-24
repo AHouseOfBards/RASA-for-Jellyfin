@@ -69,6 +69,7 @@ internal/routerguide/ per-router forwarding instructions from routers.json
 internal/reach/      external reachability checks (reachable / unreachable / inconclusive)
 internal/dnswait/    waits for records on authoritative nameservers before ACME
 internal/jellyfin/   configures Jellyfin's network settings over its own API
+internal/caddy/      generates the proxy configuration
 ```
 
 ### Live API tests
@@ -103,7 +104,7 @@ Task numbers refer to [SPEC.md §18](SPEC.md#18-implementation-tasks).
 - [x] **3** — Probe suite (Jellyfin discovery, public IP, CGNAT detection)
 - [x] **4** — Mode router
 - [x] **5** — Port mapper and router instruction guide
-- [ ] **6** — Caddy service installer
+- [~] **6** — Caddyfile generator done; service installation not started
 - [x] **7** — DNS propagation waiter
 - [x] **8** — Jellyfin configuration client
 - [ ] **9** — Wizard UI
