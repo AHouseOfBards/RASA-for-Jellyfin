@@ -154,4 +154,7 @@ If you find a security issue, please open an issue marked as such rather than a 
 
 ## Licence
 
-Not yet chosen.
+[GNU General Public License v3.0](LICENSE).
+
+The bundled Caddy binary is Apache-2.0 and `rsc.io/qr` is BSD-3-Clause; both
+are compatible with distribution under GPL-3.0.
