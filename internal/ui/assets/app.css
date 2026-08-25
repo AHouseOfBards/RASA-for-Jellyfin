@@ -324,6 +324,36 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 .address .actions { margin-top: 16px; }
 
+.address-row {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.address-text { flex: 1 1 260px; min-width: 0; }
+
+.qr {
+  margin: 0;
+  flex: 0 0 auto;
+  text-align: center;
+}
+
+/* White ground regardless of theme: a QR inverted for a dark background reads
+   on some scanners and not others, and this one is for an unknown phone. */
+.qr img {
+  display: block;
+  background: #fff;
+  border-radius: 6px;
+  image-rendering: pixelated;
+}
+
+.qr figcaption {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-top: 8px;
+}
+
 .warnings ul { padding-left: 20px; max-width: var(--measure); }
 .warnings li { margin-bottom: 8px; color: var(--warn); }
 

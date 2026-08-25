@@ -171,6 +171,9 @@ func New(opts Options) (*Wizard, error) {
 			opts.Log.Redactor().RegisterSecret(key)
 		}
 	}
+	if w.model.Result.URL != "" {
+		w.setQR()
+	}
 	return w, nil
 }
 

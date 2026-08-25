@@ -59,7 +59,14 @@ week, and a day of debugging against it leaves you locked out of the thing you
 are debugging. A release build opts in with `-ldflags "-X main.staging=0"`; a
 single run can opt in with `-production-certificates`.
 
-Requires Go 1.26 or newer. There are currently no third-party dependencies.
+Requires Go 1.26 or newer.
+
+One third-party dependency: `rsc.io/qr`, pinned, with no transitive
+dependencies of its own. CI enforces the allowlist — anything else fails the
+build. The QR encoder was originally written from scratch to avoid it; that
+version round-tripped through its own decoder but disagreed with an established
+implementation on the data codewords, and being unable to say which was right
+is the whole argument for using the one that phones have already read.
 
 ### Layout
 
@@ -85,6 +92,7 @@ internal/service/    registers the OS service and scheduled task
 internal/wizard/     the setup flow: sequencing, branching, and the model the UI renders
 internal/ui/         serves that model as a local web application
 internal/ddns/       keeps the published address current
+internal/qr/         renders the finished address for a phone camera
 internal/recovery/   recovery file and diagnostic bundle
 ```
 

@@ -14,6 +14,7 @@ import (
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/dynu"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/jellyfin"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/probe"
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/qr"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/rasaerr"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/reach"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/recovery"
@@ -61,8 +62,31 @@ func (w *Wizard) Install(ctx context.Context) error {
 
 	w.writeRecovery()
 	w.update(func(m *Model) { m.Screen = ScreenDone })
+	w.setQR()
 	w.log.OK("Remote access is set up.")
 	return nil
+}
+
+// setQR renders the finished address as a QR code for the handover screen.
+//
+// Failure is not an error: the address is on screen and copyable either way.
+// The QR exists because the phone-on-mobile-data test is the only check a user
+// can run that actually proves the setup works from outside their own network,
+// and it is exactly the check they skip when it means typing a URL with a port
+// number into a phone keyboard.
+func (w *Wizard) setQR() {
+	w.mu.Lock()
+	url := w.st.URL()
+	w.mu.Unlock()
+	if url == "" {
+		return
+	}
+	uri, err := qr.DataURI(url, 0)
+	if err != nil {
+		w.log.Warn("could not render the address as a QR code", slog.Any("err", err))
+		return
+	}
+	w.update(func(m *Model) { m.Result.QRPNG = uri })
 }
 
 // ---------------------------------------------------------------------------

@@ -191,12 +191,23 @@
       <p class="lede">Use this address from anywhere. It works in a browser and in
       every Jellyfin app.</p>
       <div class="address">
-        <code id="final-url"></code>
-        <div class="actions">
-          <button class="secondary" data-action="copy">Copy</button>
-          <button class="secondary" data-action="open">Open</button>
+        <div class="address-row">
+          <div class="address-text">
+            <code id="final-url"></code>
+            <div class="actions">
+              <button class="secondary" data-action="copy">Copy</button>
+              <button class="secondary" data-action="open">Open</button>
+            </div>
+          </div>
+          <figure class="qr" id="qr-figure" hidden>
+            <img id="qr-image" alt="QR code for your server's address" width="180" height="180">
+            <figcaption>Scan with a phone</figcaption>
+          </figure>
         </div>
       </div>
+      <p class="hint" id="qr-hint" hidden>Turn Wi-Fi off on your phone first. Reaching
+      your server over mobile data is the one test that proves it works from outside
+      your home network.</p>
       <p class="advice" id="reach-note"></p>
       <div class="warnings" id="warnings" hidden>
         <h2>Worth knowing</h2>

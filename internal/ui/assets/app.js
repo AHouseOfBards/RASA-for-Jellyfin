@@ -218,6 +218,21 @@ function renderPort() {
 
 function renderDone() {
   document.getElementById("final-url").textContent = model.result.url || "";
+
+  // The QR is inlined as a data URI: the page loads under a policy that
+  // permits nothing from anywhere else, and the address should not need a
+  // second request to appear.
+  const figure = document.getElementById("qr-figure");
+  const hint = document.getElementById("qr-hint");
+  if (model.result.qr_png) {
+    document.getElementById("qr-image").src = model.result.qr_png;
+    figure.hidden = false;
+    hint.hidden = false;
+  } else {
+    figure.hidden = true;
+    hint.hidden = true;
+  }
+
   document.getElementById("recovery-path").textContent = model.result.recovery_file || "";
   document.getElementById("reach-note").textContent =
     model.result.reachable === "reachable" ? "" : (model.result.reach_message || "");

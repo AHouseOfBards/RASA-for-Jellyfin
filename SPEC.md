@@ -672,7 +672,7 @@ The natural Docker deliverable is a **generated compose file** — RASA in conta
 | 6 | Caddy service installer | ✅ Built and verified against a real `xcaddy` build. Validates the generated file before registering the service, so a binary missing a module fails loudly rather than inside a service that already reported success |
 | 7 | DNS propagation waiter | Poll authoritative NS until visible. Gates ACME |
 | 8 | Jellyfin config client | Authenticate, read live OpenAPI doc, write network settings, verify |
-| 9 | Wizard UI | ✅ Built. Flow orchestrator in `internal/wizard` (owns sequencing and branching, owns no pixels); `internal/ui` serves it from loopback with a per-run token. QR handoff outstanding |
+| 9 | Wizard UI | ✅ Built. Flow orchestrator in `internal/wizard` (owns sequencing and branching, owns no pixels); `internal/ui` serves it from loopback with a per-run token; QR handoff verified against an independent decoder |
 | 10 | Service and installer | Per-OS service registration, firewall rule, packaging |
 | 11 | Scheduled task installer | Register the Dynu sync as a Scheduled Task or systemd timer that survives RASA's removal |
 | 12 | State file and re-run mode | ✅ Repair detection and credential reuse; deliberate removal of remote access. Caddy replacement outstanding — see decision 16 |

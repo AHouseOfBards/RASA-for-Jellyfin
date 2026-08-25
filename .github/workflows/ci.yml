@@ -75,8 +75,8 @@ jobs:
             GOOS=${target%/*} GOARCH=${target#*/} go build ./...
           done
 
-  no-dependencies:
-    name: No third-party dependencies
+  dependencies:
+    name: Dependencies stay on the allowlist
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -86,15 +86,35 @@ jobs:
 
       # RASA is an unsigned binary asking for administrator rights on a home
       # machine. Every dependency it takes is one more thing a cautious user
-      # has to trust, so "no dependencies" is a property worth enforcing rather
-      # than a claim in the README that quietly stops being true.
-      - name: Assert the dependency graph is empty
+      # has to trust, so the set is small, pinned, and enforced here rather
+      # than described in a README that quietly stops being true.
+      #
+      # Adding to this list is a deliberate act. The bar is: could we write it
+      # ourselves and be confident it is correct? For the QR encoder the answer
+      # turned out to be no, which is why rsc.io/qr is on it.
+      - name: Check the dependency graph
         run: |
-          deps=$(go list -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' ./... \
-                 | grep -v '^github.com/AHouseOfBards/RASA-for-Jellyfin' || true)
-          if [ -n "$deps" ]; then
-            echo "RASA has acquired third-party dependencies:"
-            echo "$deps"
+          allowed="rsc.io/qr"
+          deps=$(go list -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' ./... | grep -v '^github.com/AHouseOfBards/RASA-for-Jellyfin' || true)
+          unexpected=""
+          for dep in $deps; do
+            ok=""
+            for prefix in $allowed; do
+              case "$dep" in
+                "$prefix"|"$prefix"/*) ok=1 ;;
+              esac
+            done
+            [ -n "$ok" ] || unexpected="$unexpected $dep"
+          done
+          if [ -n "$unexpected" ]; then
+            echo "Unexpected dependencies:"
+            for d in $unexpected; do echo "  $d"; done
+            echo
+            echo "Add to the allowlist above only after deciding it is worth the trust."
             exit 1
           fi
-          echo "ok: standard library only"
+          echo "ok: standard library plus $allowed"
+
+      # A dependency that is pinned but not verifiable is not pinned.
+      - name: Verify module checksums
+        run: go mod verify
