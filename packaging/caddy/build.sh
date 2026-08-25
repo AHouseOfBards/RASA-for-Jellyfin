@@ -27,10 +27,29 @@ xcaddy build "${CADDY_VERSION}" \
 
 # Prove the modules are present. Catching this here is the whole point: the
 # alternative is discovering it when a user's proxy refuses to start.
-echo "verifying required modules"
-"$OUT" list-modules | grep -q "dns.providers.dynu" || {
-  echo "FATAL: dns.providers.dynu missing from the build" >&2; exit 1; }
-"$OUT" list-modules | grep -q "rate_limit" || {
-  echo "FATAL: rate_limit missing from the build" >&2; exit 1; }
+#
+# Releases are cross-compiled -- every target is built on a linux/amd64 runner
+# -- so `list-modules` cannot be the only check: asking the host to execute a
+# windows/arm64 binary fails for reasons that have nothing to do with the
+# modules. The string check works on any target because a module ID is a
+# compile-time constant that is only in the binary if the module was linked in,
+# and it runs for native builds too rather than being the cross-compile excuse.
+required="dns.providers.dynu http.handlers.rate_limit"
+
+echo "verifying required modules are linked in"
+for id in $required; do
+  grep -qa "$id" "$OUT" || {
+    echo "FATAL: $id is missing from the build" >&2; exit 1; }
+done
+
+if [ "$(go env GOOS)/$(go env GOARCH)" = "$(go env GOHOSTOS)/$(go env GOHOSTARCH)" ]; then
+  echo "verifying the binary registers them"
+  for id in $required; do
+    "$OUT" list-modules | grep -q "$id" || {
+      echo "FATAL: $id is not registered by the built binary" >&2; exit 1; }
+  done
+else
+  echo "cross-compiled: skipping the execution check"
+fi
 
 echo "ok: $OUT"
