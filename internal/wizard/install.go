@@ -271,11 +271,7 @@ func (w *Wizard) waitForCertificate(ctx context.Context) error {
 		// where most people start to doubt it, the line also says how long it
 		// is allowed to take, so a genuinely slow issuance does not look like
 		// a failure. A real run took just over six minutes.
-		note := fmt.Sprintf("Still working (%s)", elapsed.Round(5*time.Second))
-		if elapsed > 45*time.Second {
-			note += ", and can take up to " + CertificateWaitText()
-		}
-		w.step(SetupCert, StepRunning, note)
+		w.step(SetupCert, StepRunning, certProgressNote(elapsed))
 	})
 	if err != nil {
 		w.step(SetupCert, StepFailed, "")
@@ -299,6 +295,27 @@ func (w *Wizard) waitForCertificate(ctx context.Context) error {
 	w.advance(state.CertIssued)
 	return nil
 }
+
+// certProgressNote is the line shown while a certificate is being issued.
+//
+// A pure function because the model channel that carries it is deliberately
+// lossy — it holds one snapshot and the newest wins — so a test subscribing to
+// it cannot reliably observe any particular intermediate note. Testing the
+// wording here is both deterministic and closer to the thing worth checking.
+func certProgressNote(elapsed time.Duration) string {
+	note := fmt.Sprintf("Still working (%s)", elapsed.Round(5*time.Second))
+	if elapsed > certExplainAfter {
+		// Past the point where people start to doubt it, say how long it is
+		// allowed to take so a slow issuance does not read as a failure. A
+		// real run took just over six minutes.
+		note += ", and can take up to " + CertificateWaitText()
+	}
+	return note
+}
+
+// certExplainAfter is how long the plain counter runs before it starts
+// explaining itself.
+const certExplainAfter = 45 * time.Second
 
 func isRateLimited(err error) bool {
 	s := strings.ToLower(err.Error())

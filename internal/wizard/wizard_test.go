@@ -1075,49 +1075,28 @@ func TestCertificateWaitCopyMatchesTheEnforcedTimeout(t *testing.T) {
 }
 
 // A slow issuance must say how long it is allowed to take, so that waiting
-// does not look like failing.
+// does not look like failing. Tested on the pure function rather than through
+// the model channel, which holds one snapshot and drops the rest by design —
+// subscribing to it made this test pass locally and fail on every CI platform.
 func TestSlowCertificateExplainsItself(t *testing.T) {
-	var notes []string
-	h := newHarness(t, func(o *Options) {
-		o.CertWait = &slowCert{}
-	})
-	h.w.update(func(m *Model) { m.Setup = initialSetup() })
-
-	sub, stop := h.w.Subscribe()
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for m := range sub {
-			for _, s := range m.Setup {
-				if s.ID == SetupCert && s.Note != "" {
-					notes = append(notes, s.Note)
-				}
-			}
-		}
-	}()
-
-	h.runHappyPath(t)
-	stop()
-	<-done
-
-	var sawCeiling bool
-	for _, n := range notes {
-		if strings.Contains(n, CertificateWaitText()) {
-			sawCeiling = true
-		}
+	early := certProgressNote(10 * time.Second)
+	if strings.Contains(early, CertificateWaitText()) {
+		t.Errorf("the ceiling appears immediately, which makes a fast issuance look slow: %q", early)
 	}
-	if !sawCeiling {
-		t.Errorf("a slow issuance never told the user how long it may take; notes were %q", notes)
+	if !strings.Contains(early, "Still working") {
+		t.Errorf("early note = %q", early)
 	}
-}
 
-// slowCert reports progress past the point where the ceiling should appear.
-type slowCert struct{}
-
-func (slowCert) Wait(ctx context.Context, hostname string, port int, on func(time.Duration)) (time.Time, error) {
-	if on != nil {
-		on(10 * time.Second)
-		on(90 * time.Second)
+	late := certProgressNote(90 * time.Second)
+	if !strings.Contains(late, CertificateWaitText()) {
+		t.Errorf("a slow issuance never says how long it may take: %q", late)
 	}
-	return time.Now().Add(90 * 24 * time.Hour), nil
+
+	// The boundary itself, so the threshold cannot drift unnoticed.
+	if strings.Contains(certProgressNote(certExplainAfter), CertificateWaitText()) {
+		t.Error("the ceiling appears at the threshold rather than after it")
+	}
+	if !strings.Contains(certProgressNote(certExplainAfter+time.Second), CertificateWaitText()) {
+		t.Error("the ceiling never appears just past the threshold")
+	}
 }
