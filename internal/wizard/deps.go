@@ -85,6 +85,23 @@ type AvailabilityChecker interface {
 // ---------------------------------------------------------------------------
 // Real implementations.
 
+// CertificateWait is how long RASA will wait for a certificate.
+//
+// It must exceed the propagation timeout the Caddyfile hands to Caddy, plus
+// room for the ACME round trips that follow. Both were once five minutes, and
+// on a real run RASA declared failure at 4m55s — 55 seconds before Caddy
+// finished successfully. The user was shown a red line for a setup that was
+// about to work.
+//
+// The user-facing copy is derived from this value rather than written beside
+// it, so the number on screen cannot drift from the number enforced.
+const CertificateWait = caddy.PropagationTimeout + 4*time.Minute
+
+// CertificateWaitText renders that ceiling for the wizard's progress line.
+func CertificateWaitText() string {
+	return fmt.Sprintf("%d minutes", int(CertificateWait.Minutes()))
+}
+
 type realCertWaiter struct {
 	Log      *logging.Logger
 	Interval time.Duration
@@ -111,12 +128,7 @@ func (w realCertWaiter) Wait(ctx context.Context, hostname string, port int, onP
 	}
 	timeout := w.Timeout
 	if timeout <= 0 {
-		// Must exceed what the Caddyfile allows Caddy for propagation, plus
-		// the ACME round trips after it. Both were once five minutes, so a
-		// stalled challenge made RASA declare failure at 4m55s while Caddy was
-		// still inside its own window — the user saw a red line and no reason,
-		// and the log that would have explained it was empty.
-		timeout = caddy.PropagationTimeout + 4*time.Minute
+		timeout = CertificateWait
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

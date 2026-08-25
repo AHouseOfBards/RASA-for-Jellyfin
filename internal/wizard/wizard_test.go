@@ -3,6 +3,7 @@ package wizard
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -1055,4 +1056,68 @@ func TestGenuineConflictStillFallsBack(t *testing.T) {
 	if got := h.w.Model().ListenPort; got != 8443 {
 		t.Errorf("listen port = %d, want the 8443 fallback for a real conflict", got)
 	}
+}
+
+// The ceiling shown to the user must be the one actually enforced. Writing the
+// number into copy by hand is how a screen ends up promising nine minutes
+// while the code gives up at five — which is the bug that produced a red line
+// 55 seconds before a real certificate arrived.
+func TestCertificateWaitCopyMatchesTheEnforcedTimeout(t *testing.T) {
+	if CertificateWait <= caddy.PropagationTimeout {
+		t.Fatalf("RASA waits %s but allows Caddy %s for propagation alone; it will "+
+			"abandon issuances that are still in progress",
+			CertificateWait, caddy.PropagationTimeout)
+	}
+	want := fmt.Sprintf("%d minutes", int(CertificateWait.Minutes()))
+	if got := CertificateWaitText(); got != want {
+		t.Errorf("CertificateWaitText() = %q, want %q", got, want)
+	}
+}
+
+// A slow issuance must say how long it is allowed to take, so that waiting
+// does not look like failing.
+func TestSlowCertificateExplainsItself(t *testing.T) {
+	var notes []string
+	h := newHarness(t, func(o *Options) {
+		o.CertWait = &slowCert{}
+	})
+	h.w.update(func(m *Model) { m.Setup = initialSetup() })
+
+	sub, stop := h.w.Subscribe()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for m := range sub {
+			for _, s := range m.Setup {
+				if s.ID == SetupCert && s.Note != "" {
+					notes = append(notes, s.Note)
+				}
+			}
+		}
+	}()
+
+	h.runHappyPath(t)
+	stop()
+	<-done
+
+	var sawCeiling bool
+	for _, n := range notes {
+		if strings.Contains(n, CertificateWaitText()) {
+			sawCeiling = true
+		}
+	}
+	if !sawCeiling {
+		t.Errorf("a slow issuance never told the user how long it may take; notes were %q", notes)
+	}
+}
+
+// slowCert reports progress past the point where the ceiling should appear.
+type slowCert struct{}
+
+func (slowCert) Wait(ctx context.Context, hostname string, port int, on func(time.Duration)) (time.Time, error) {
+	if on != nil {
+		on(10 * time.Second)
+		on(90 * time.Second)
+	}
+	return time.Now().Add(90 * 24 * time.Hour), nil
 }

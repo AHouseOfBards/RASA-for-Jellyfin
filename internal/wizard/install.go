@@ -267,8 +267,15 @@ func (w *Wizard) waitForCertificate(ctx context.Context) error {
 	expiry, err := w.opts.CertWait.Wait(ctx, hostname, port, func(elapsed time.Duration) {
 		// Certificate issuance is the longest silent stretch in the product
 		// and the one users read as a hang. Counting up is the difference
-		// between "working" and "frozen".
-		w.step(SetupCert, StepRunning, fmt.Sprintf("Still working (%s)", elapsed.Round(5*time.Second)))
+		// between "working" and "frozen" — and once it has run past the point
+		// where most people start to doubt it, the line also says how long it
+		// is allowed to take, so a genuinely slow issuance does not look like
+		// a failure. A real run took just over six minutes.
+		note := fmt.Sprintf("Still working (%s)", elapsed.Round(5*time.Second))
+		if elapsed > 45*time.Second {
+			note += ", and can take up to " + CertificateWaitText()
+		}
+		w.step(SetupCert, StepRunning, note)
 	})
 	if err != nil {
 		w.step(SetupCert, StepFailed, "")
