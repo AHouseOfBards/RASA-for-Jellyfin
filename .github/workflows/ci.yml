@@ -75,7 +75,10 @@ jobs:
       - name: Check every referenced element id exists
         run: |
           missing=""
-          ids=$(grep -o 'getElementById("[a-z0-9-]*")' internal/ui/assets/app.js                 | sed 's/.*("\(.*\)")//' | sort -u)
+          # cut rather than a sed backreference: escaping a backreference through
+          # several layers of tooling is how a literal control character ended up
+          # in this file and made the whole workflow unparseable.
+          ids=$(grep -o 'getElementById("[a-z0-9-]*"' internal/ui/assets/app.js | cut -d'"' -f2 | sort -u)
           for id in $ids; do
             grep -q "id=\"$id\"" internal/ui/assets/index.html || missing="$missing $id"
           done
