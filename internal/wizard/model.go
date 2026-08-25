@@ -110,6 +110,20 @@ type NameView struct {
 	Suggestions []string `json:"suggestions,omitempty"`
 }
 
+// KeyCheckView answers "does this key work" without committing to it, so the
+// Dynu screen can say so while the user is still looking at the paste box.
+//
+// Finding out on submit is the difference between "paste, see a tick, carry
+// on" and "paste, press Continue, read an error, go back to a website you have
+// already closed". That screen is the only place the user leaves RASA, and the
+// one most likely to end a run.
+type KeyCheckView struct {
+	// State is "unknown" while the key is too short to be worth checking,
+	// then "valid" or "rejected".
+	State   string `json:"state"`
+	Message string `json:"message,omitempty"`
+}
+
 // PortView is the state of journey step 9.
 type PortView struct {
 	// Needed is false when nothing has to be opened — mesh mode, or a

@@ -3,6 +3,7 @@ package wizard
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"os"
@@ -1098,5 +1099,54 @@ func TestSlowCertificateExplainsItself(t *testing.T) {
 	}
 	if !strings.Contains(certProgressNote(certExplainAfter+time.Second), CertificateWaitText()) {
 		t.Error("the ceiling never appears just past the threshold")
+	}
+}
+
+// A key is checked as the user types, and constructing a real Dynu client
+// registers its key with the log redactor as a secret to be scrubbed. Checking
+// a half-typed key would therefore register "d" as a secret and redact that
+// letter from every log line in the product, so nothing short may reach the
+// constructor at all.
+func TestShortDynuKeyIsNeverHandedToAClient(t *testing.T) {
+	h := newHarness(t, nil)
+
+	var built []string
+	h.w.opts.NewDynu = func(key string) DynuAPI {
+		built = append(built, key)
+		return h.dynu
+	}
+
+	for _, partial := range []string{"", "d", "dynu", "dynu-api-key"} {
+		view := h.w.CheckDynuKey(context.Background(), partial)
+		if view.State != "unknown" {
+			t.Errorf("CheckDynuKey(%q) = %q, want unknown", partial, view.State)
+		}
+	}
+	if len(built) != 0 {
+		t.Fatalf("a client was built for a partial key: %q", built)
+	}
+
+	// A complete one is checked, and reported without being stored.
+	if view := h.w.CheckDynuKey(context.Background(), testKey); view.State != "valid" {
+		t.Fatalf("CheckDynuKey(complete) = %q, want valid", view.State)
+	}
+	if len(built) != 1 {
+		t.Fatalf("built %d clients for one complete key, want 1", len(built))
+	}
+	if h.w.Model().DynuKey {
+		t.Error("checking a key marked it as set; checking must not commit")
+	}
+}
+
+func TestRejectedDynuKeySaysSo(t *testing.T) {
+	h := newHarness(t, nil)
+	h.dynu.listErr = errors.New("401 unauthorized")
+
+	view := h.w.CheckDynuKey(context.Background(), testKey)
+	if view.State != "rejected" {
+		t.Fatalf("state = %q, want rejected", view.State)
+	}
+	if view.Message == "" {
+		t.Error("a rejection with no message tells the user nothing")
 	}
 }

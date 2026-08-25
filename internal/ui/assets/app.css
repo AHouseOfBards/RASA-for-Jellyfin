@@ -84,7 +84,57 @@ body {
 .thin { font-weight: 400; color: var(--ink-soft); }
 .version { margin-left: auto; font-variant-numeric: tabular-nums; }
 
+/* Progress rail ----------------------------------------------------------- */
+
+.progress { padding: 4px 0 0; }
+
+.rail {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  gap: 6px;
+}
+
+.rail li {
+  flex: 1;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+  padding-top: 7px;
+  border-top: 3px solid var(--line);
+  /* The labels are the first thing to go on a narrow window; the bars still
+     carry the position, which is the part that matters. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rail li[data-state="done"] { border-top-color: var(--accent); }
+.rail li[data-state="here"] {
+  border-top-color: var(--accent);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Belt and braces with the rail: the bars alone are a picture, and this is the
+   sentence a screen reader reads and a glancing user counts. */
+.rail-caption {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 520px) {
+  .rail li { font-size: 0; padding-top: 0; }
+}
+
 /* Screens ----------------------------------------------------------------- */
+
+/* Focused only to move a screen reader onto the new screen, never to be
+   clicked, so it gets the announcement without the focus ring. */
+h1:focus { outline: none; }
 
 main {
   flex: 1;
@@ -199,6 +249,29 @@ input:focus-visible, select:focus-visible, button:focus-visible {
 .advice { font-size: 14px; margin: 4px 0 0; color: var(--ink-soft); min-height: 1.4em; }
 .advice[data-tone="good"] { color: var(--good); }
 .advice[data-tone="bad"] { color: var(--bad); }
+
+/* Name confirmation ------------------------------------------------------- */
+
+.confirm {
+  margin-top: 20px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  max-width: var(--measure);
+}
+
+.confirm-lede { margin: 0; font-size: 14px; color: var(--ink-soft); }
+
+.confirm-url {
+  margin: 10px 0 14px;
+  /* The whole point of the pause is that the user reads this line, so it is
+     set larger than anything else on the screen. */
+  font-size: 20px;
+  word-break: break-all;
+}
+
+.confirm-url code { color: var(--ink); }
 
 .suggestions { margin-top: 18px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }

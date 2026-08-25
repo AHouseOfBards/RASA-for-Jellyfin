@@ -627,6 +627,37 @@ func (w *Wizard) SetDynuKey(ctx context.Context, key string) error {
 	return nil
 }
 
+// minCheckableKey is the length below which a key is not worth testing.
+//
+// This is a redactor guard, not a validation rule. Constructing a Dynu client
+// registers its key as a secret to be scrubbed from logs, so testing a
+// half-typed key would register "a" as a secret and redact that letter from
+// every log line in the product. A real key is 32 characters; nothing shorter
+// than this is a complete one, and the realistic action here is a paste that
+// arrives whole.
+const minCheckableKey = 24
+
+// CheckDynuKey reports whether a key is accepted, without storing it or
+// advancing the wizard.
+//
+// Deliberately outside the busy lock: this runs while the user is typing, and
+// it must never block, fail, or interfere with a real operation in flight.
+func (w *Wizard) CheckDynuKey(ctx context.Context, key string) KeyCheckView {
+	key = strings.TrimSpace(key)
+	if len(key) < minCheckableKey {
+		return KeyCheckView{State: "unknown"}
+	}
+
+	client := w.opts.NewDynu(key)
+	if _, err := client.ListDomains(ctx); err != nil {
+		return KeyCheckView{
+			State:   "rejected",
+			Message: "Dynu didn't accept that key. Check you copied all of it.",
+		}
+	}
+	return KeyCheckView{State: "valid", Message: "That key works."}
+}
+
 // ---------------------------------------------------------------------------
 // Journey step 8: pick a name.
 

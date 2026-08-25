@@ -149,6 +149,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/dynu/key", s.guard(s.async("dynu", func(ctx context.Context, body request) error {
 		return s.w.SetDynuKey(ctx, body.Key)
 	})))
+	s.mux.HandleFunc("/api/dynu/check", s.guard(s.handleDynuCheck))
 	s.mux.HandleFunc("/api/name/check", s.guard(s.handleNameCheck))
 	s.mux.HandleFunc("/api/name", s.guard(s.async("name", func(ctx context.Context, body request) error {
 		return s.w.ClaimName(ctx, body.Label, body.Parent)
@@ -285,6 +286,28 @@ func (s *Server) handleEvents(wr http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+// handleDynuCheck validates a key without committing to it.
+//
+// POST with the key in the body rather than GET with it in the query, which is
+// what the name check does: a query string is the one part of a request that
+// routinely gets written down — history, logs, referrers — and this one is a
+// credential.
+func (s *Server) handleDynuCheck(wr http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(wr, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body request
+	if r.ContentLength != 0 {
+		dec := json.NewDecoder(http.MaxBytesReader(wr, r.Body, 1<<16))
+		if err := dec.Decode(&body); err != nil {
+			writeJSON(wr, http.StatusBadRequest, map[string]string{"error": "malformed request"})
+			return
+		}
+	}
+	writeJSON(wr, http.StatusOK, s.w.CheckDynuKey(r.Context(), body.Key))
 }
 
 func (s *Server) handleNameCheck(wr http.ResponseWriter, r *http.Request) {

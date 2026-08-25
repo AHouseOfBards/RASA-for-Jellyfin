@@ -13,6 +13,57 @@
 
 const TOKEN = document.querySelector('meta[name="rasa-token"]').content;
 const DYNU_SIGNUP = "https://www.dynu.com/en-US/ControlPanel/CreateAccount";
+// Straight to the key, rather than leaving the user to find "Control Panel →
+// API Credentials" themselves. Signed out this redirects to the login page
+// carrying a ReturnUrl back here, so signing in lands on the right page.
+const DYNU_API_KEYS = "https://www.dynu.com/en-US/ControlPanel/APICredentials";
+
+/* The six steps, in order.
+ *
+ * The welcome screen promises six steps and three at the keyboard, so the
+ * count has to come from one place or the promise quietly stops being true.
+ * Screens outside the run - welcome, blocked, done, removing, removed - have
+ * no position in it and hide the rail. */
+const JOURNEY = [
+  { screen: "checking", label: "Checking" },
+  { screen: "jellyfin", label: "Jellyfin" },
+  { screen: "dynu", label: "Address account" },
+  { screen: "name", label: "Your name" },
+  { screen: "port", label: "The door" },
+  { screen: "setup", label: "Setting up" },
+];
+
+/* Which screens are waiting for a person, and what the tab should say.
+ *
+ * The tab title is the notification here. There is a wait in the middle of
+ * this run that has been measured at anywhere from two seconds to five
+ * minutes, and users walk away during it; something has to call them back that
+ * works without a permission prompt. */
+const TAB_TITLE = {
+  welcome: { text: "Set up remote access", waiting: false },
+  checking: { text: "Checking your network", waiting: false },
+  blocked: { text: "Needs your attention", waiting: true },
+  jellyfin: { text: "Sign in to Jellyfin", waiting: true },
+  dynu: { text: "Your address account", waiting: true },
+  name: { text: "Name your server", waiting: true },
+  port: { text: "Opening the door", waiting: true },
+  setup: { text: "Setting everything up", waiting: false },
+  done: { text: "Setup finished", waiting: true },
+  removing: { text: "Removing remote access", waiting: false },
+  removed: { text: "Remote access removed", waiting: true },
+};
+
+/* The field to put the cursor in when a screen appears.
+ *
+ * The plain autofocus attribute only fires on page load, and every screen here
+ * is shown by script, so without this every form screen needed a mouse click
+ * before the user could type a single character. */
+const FOCUS_TARGET = {
+  jellyfin: "jf-user",
+  dynu: "dynu-key",
+  name: "name-label",
+  welcome: "welcome-button",
+};
 
 /* Transport ---------------------------------------------------------------- */
 
@@ -23,7 +74,12 @@ async function post(path, body) {
     body: JSON.stringify(body || {}),
   });
   if (!res.ok) {
-    status("That didn't go through. Try again.");
+    // Naming the cause matters: "that didn't go through" reads the same for a
+    // wizard that has already exited as it does for a transient blip, and only
+    // one of those is worth clicking again.
+    status(res.status === 403
+      ? "This page's key is no longer valid. Close it and start RASA again."
+      : `That didn't go through (error ${res.status}). Try again.`);
   }
   return res;
 }
@@ -51,6 +107,8 @@ function status(text) {
   document.getElementById("status").textContent = text || "";
 }
 
+let shownScreen = null;
+
 function show(screen) {
   for (const el of document.querySelectorAll(".screen")) {
     if (el.dataset.screen === screen) {
@@ -59,6 +117,69 @@ function show(screen) {
       el.removeAttribute("data-active");
     }
   }
+  renderRail(screen);
+  // Only on an actual change. Re-running this on every model snapshot would
+  // yank the cursor out of the field mid-word, and snapshots arrive often.
+  if (screen !== shownScreen) {
+    shownScreen = screen;
+    focusScreen(screen);
+  }
+  renderTitle(screen);
+}
+
+/* Moves the cursor, and the screen reader, to the new screen.
+ *
+ * Swapping screens without moving focus leaves a keyboard or screen-reader
+ * user parked on the button they just pressed, on a screen that is no longer
+ * visible, with no announcement that anything happened. */
+function focusScreen(screen) {
+  const target = FOCUS_TARGET[screen];
+  const el = target && document.getElementById(target);
+  if (el && !el.disabled && el.offsetParent !== null) {
+    el.focus();
+    return;
+  }
+  const section = document.querySelector(`.screen[data-screen="${screen}"]`);
+  const heading = section && section.querySelector("h1");
+  if (heading) {
+    heading.setAttribute("tabindex", "-1");
+    heading.focus();
+  }
+}
+
+/* The tab title, which is this product's only notification channel. */
+function renderTitle(screen) {
+  const entry = TAB_TITLE[screen] || { text: "Set up remote access", waiting: false };
+  const step = JOURNEY.findIndex((s) => s.screen === screen);
+  const where = step >= 0 ? ` (${step + 1}/${JOURNEY.length})` : "";
+  // The marker goes first so it survives the truncation a narrow tab applies,
+  // and only appears when the user is genuinely being waited on - a marker on
+  // every screen is not a signal.
+  const mark = entry.waiting && document.hidden ? "● " : "";
+  document.title = `${mark}${entry.text}${where} — RASA`;
+}
+
+function renderRail(screen) {
+  const nav = document.getElementById("progress");
+  const at = JOURNEY.findIndex((s) => s.screen === screen);
+  if (at < 0) {
+    nav.hidden = true;
+    return;
+  }
+  nav.hidden = false;
+
+  const rail = document.getElementById("rail");
+  rail.replaceChildren();
+  JOURNEY.forEach((s, i) => {
+    const li = document.createElement("li");
+    li.dataset.state = i < at ? "done" : i === at ? "here" : "todo";
+    li.textContent = s.label;
+    if (i === at) li.setAttribute("aria-current", "step");
+    rail.appendChild(li);
+  });
+
+  document.getElementById("rail-caption").textContent =
+    `Step ${at + 1} of ${JOURNEY.length}: ${JOURNEY[at].label}`;
 }
 
 function renderSteps(id, steps) {
@@ -141,6 +262,11 @@ function handleAction(action) {
     default:
       post("/api/install");
   }
+}
+
+function closeConfirm() {
+  document.getElementById("name-confirm").hidden = true;
+  document.getElementById("name-actions").hidden = false;
 }
 
 function renderName() {
@@ -302,9 +428,11 @@ function render(next) {
   renderSteps("removal", model.removal);
 
   for (const b of document.querySelectorAll("button")) {
-    if (b.dataset.action !== "copy" && b.dataset.action !== "open") {
-      b.disabled = model.busy;
-    }
+    const alwaysLive =
+      b.dataset.action === "copy" ||
+      b.dataset.action === "open" ||
+      b.dataset.keepEnabled !== undefined;
+    if (!alwaysLive) b.disabled = model.busy;
   }
   document.getElementById("name-submit").disabled =
     model.busy || document.getElementById("name-label").value.trim().length === 0;
@@ -355,12 +483,54 @@ function render(next) {
   }
 }
 
+/* Dynu key field ----------------------------------------------------------- */
+
+let keyTimer = null;
+
+function scheduleKeyCheck() {
+  clearTimeout(keyTimer);
+  const advice = document.getElementById("dynu-advice");
+  advice.textContent = "";
+  advice.removeAttribute("data-tone");
+  // Longer than the name field's debounce, because this one costs a round trip
+  // to Dynu rather than a DNS lookup, and the realistic gesture here is a
+  // paste that arrives complete in one event.
+  keyTimer = setTimeout(runKeyCheck, 500);
+}
+
+async function runKeyCheck() {
+  const key = document.getElementById("dynu-key").value.trim();
+  if (!key) return;
+
+  const res = await fetch("/api/dynu/check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-RASA-Token": TOKEN },
+    body: JSON.stringify({ key }),
+  });
+  if (!res.ok) return;
+  const view = await res.json();
+  // Stale: the user kept typing while this was in flight.
+  if (document.getElementById("dynu-key").value.trim() !== key) return;
+
+  const advice = document.getElementById("dynu-advice");
+  advice.textContent = view.message || "";
+  if (view.state === "valid") {
+    advice.dataset.tone = "good";
+  } else if (view.state === "rejected") {
+    advice.dataset.tone = "bad";
+  } else {
+    advice.removeAttribute("data-tone");
+  }
+}
+
 /* Name field --------------------------------------------------------------- */
 
 let checkTimer = null;
 
 function scheduleCheck() {
   nameTouched = true;
+  // Any edit invalidates an address the user was being asked to confirm.
+  closeConfirm();
   updatePreview();
   clearTimeout(checkTimer);
 
@@ -418,6 +588,13 @@ async function runCheck() {
 function wire() {
   document.getElementById("name-label").addEventListener("input", scheduleCheck);
   document.getElementById("name-parent").addEventListener("change", scheduleCheck);
+  document.getElementById("dynu-key").addEventListener("input", scheduleKeyCheck);
+
+  // The marker only means anything while the tab is in the background, so it
+  // has to be recomputed when that changes rather than only on a transition.
+  document.addEventListener("visibilitychange", () => {
+    if (shownScreen) renderTitle(shownScreen);
+  });
 
   document.getElementById("signin-form").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -440,8 +617,27 @@ function wire() {
     document.getElementById("dynu-key").value = "";
   });
 
+  // Submitting shows the address for approval; it does not create it. The
+  // second click is the one that reaches the server.
   document.getElementById("name-form").addEventListener("submit", (e) => {
     e.preventDefault();
+    const label = document.getElementById("name-label").value.trim();
+    if (!label) return;
+    const parent = document.getElementById("name-parent").value;
+    document.getElementById("confirm-url").textContent = `https://${label}.${parent}`;
+    document.getElementById("name-confirm").hidden = false;
+    document.getElementById("name-actions").hidden = true;
+    document.getElementById("confirm-create").focus();
+  });
+
+  document.getElementById("confirm-back").addEventListener("click", () => {
+    closeConfirm();
+    document.getElementById("name-label").focus();
+    document.getElementById("name-label").select();
+  });
+
+  document.getElementById("confirm-create").addEventListener("click", () => {
+    closeConfirm();
     post("/api/name", {
       label: document.getElementById("name-label").value.trim(),
       parent: document.getElementById("name-parent").value,
@@ -488,10 +684,14 @@ function wire() {
         // here so the user comes straight back.
         window.open(DYNU_SIGNUP, "_blank", "noopener");
         break;
+      case "open-dynu-key":
+        window.open(DYNU_API_KEYS, "_blank", "noopener");
+        break;
       case "paste":
         try {
           document.getElementById("dynu-key").value = await navigator.clipboard.readText();
           status("Pasted.");
+          scheduleKeyCheck();
         } catch {
           // Clipboard access needs permission the browser may refuse. The
           // field is right there, so this is a convenience, never the only way.

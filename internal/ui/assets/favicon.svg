@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="RASA">
+  <!--
+    A doorway, which is the product's own metaphor for the step users find
+    most alarming: "Opening the door". Bold shapes only, because the job this
+    does is being findable at 16px in a strip of twenty other tabs after the
+    user has walked away during the certificate wait.
+
+    The green matches --accent in app.css. It is stated literally rather than
+    inherited: a favicon has no access to the page's custom properties.
+  -->
+  <rect width="32" height="32" rx="7" fill="#2f6f4f"/>
+  <path d="M10.5 25V15.5a5.5 5.5 0 0 1 11 0V25"
+        fill="none" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round"/>
+</svg>

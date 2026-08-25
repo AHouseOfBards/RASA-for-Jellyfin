@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="rasa-token" content="{{TOKEN}}">
 <title>Set up remote access</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body>
@@ -15,6 +16,14 @@
     <span class="version" id="version"></span>
   </header>
 
+  <!-- Where you are in the run. The welcome screen promises seven minutes and
+       three steps at the keyboard; without this, nothing ever says which one
+       you are on or how many are left. -->
+  <nav class="progress" id="progress" hidden aria-label="Setup progress">
+    <ol class="rail" id="rail"></ol>
+    <p class="rail-caption" id="rail-caption"></p>
+  </nav>
+
   <main id="main">
 
     <!-- Journey step 4 -->
@@ -22,9 +31,11 @@
       <h1 id="welcome-title">Let's make your server reachable from anywhere</h1>
       <p class="lede" id="welcome-lede">
         RASA gives your Jellyfin server its own web address and a proper security
-        certificate, sets up your router, and tells Jellyfin about it. It takes
-        about seven minutes, and you only need to be at the keyboard for three of
-        the steps.
+        certificate, sets up your router, and tells Jellyfin about it. There are
+        six steps and you only need to be at the keyboard for three of them.
+        It usually takes about five minutes, though one step waits on a
+        certificate authority and can occasionally take longer on its own.
+        You'll be told when it needs you again.
       </p>
       <div class="notice" id="repair-notice" hidden>
         <strong>You've set this up before.</strong>
@@ -55,7 +66,11 @@
     <section class="screen" data-screen="jellyfin">
       <h1>Sign in to Jellyfin</h1>
       <p class="lede" id="jellyfin-found"></p>
-      <form id="signin-form" autocomplete="off">
+      <!-- No autocomplete="off" on this form. It is a real sign-in to the
+           user's own server, and suppressing the password manager on the one
+           screen where autofill genuinely helps just makes people type a
+           password they saved precisely so they would not have to. -->
+      <form id="signin-form">
         <div class="field">
           <label for="jf-user">Jellyfin username</label>
           <input id="jf-user" name="username" type="text" autocomplete="username" required>
@@ -93,17 +108,20 @@
         yours, not RASA's — nobody else can change or take your address.
       </p>
       <ol class="numbered">
-        <li>Open Dynu and create an account. It asks for an email address and a password.</li>
-        <li>Once you're signed in, go to <strong>Control Panel → API Credentials</strong>.</li>
-        <li>Copy the API key and paste it below.</li>
+        <li>Create a Dynu account. It asks for an email address and a password.</li>
+        <li>Come back here and open the API key page — the second button below
+            goes straight to it, so you don't have to find it in the menus.</li>
+        <li>Copy the key and paste it in the box. RASA checks it as soon as you do.</li>
       </ol>
       <div class="actions">
-        <button class="secondary" type="button" data-action="open-dynu">Open Dynu sign-up</button>
+        <button class="secondary" type="button" data-action="open-dynu">Create an account</button>
+        <button class="secondary" type="button" data-action="open-dynu-key">Open the API key page</button>
       </div>
       <form id="dynu-form" autocomplete="off">
         <div class="field">
           <label for="dynu-key">Dynu API key</label>
           <input id="dynu-key" name="key" type="password" spellcheck="false" placeholder="Paste it here">
+          <p class="advice" id="dynu-advice"></p>
         </div>
         <div class="actions">
           <button class="primary" type="submit">Continue</button>
@@ -130,10 +148,25 @@
           <p class="hint">Available with the same name:</p>
           <div class="chips" id="name-chips"></div>
         </div>
-        <div class="actions">
+        <div class="actions" id="name-actions">
           <button class="primary" type="submit" id="name-submit">Use this address</button>
         </div>
       </form>
+
+      <!-- Claiming creates the hostname on the user's real Dynu account and
+           moves straight on. There is no undo inside RASA and the free plan
+           allows only a handful, so the most permanent and most personal
+           decision in the product does not happen on one click. -->
+      <div class="confirm" id="name-confirm" hidden>
+        <p class="confirm-lede">This is the address you'll type on your phone:</p>
+        <p class="confirm-url"><code id="confirm-url"></code></p>
+        <p class="hint">It's yours from the moment you create it, and changing it
+        later means making a new one on Dynu's website.</p>
+        <div class="actions">
+          <button class="primary" type="button" id="confirm-create">Create it</button>
+          <button class="link" type="button" id="confirm-back">Pick a different name</button>
+        </div>
+      </div>
     </section>
 
     <!-- Journey step 9 -->
@@ -149,19 +182,25 @@
         </table>
         <p class="warn" id="port-reservation" hidden></p>
       </div>
+      <!-- data-keep-enabled: the skip stays clickable while busy. It used to be
+           disabled along with everything else, so the one button whose entire
+           purpose is escaping a slow router attempt was greyed out for exactly
+           as long as the user wanted it. -->
       <div class="actions">
         <button class="primary" data-action="port-open">Test again</button>
-        <button class="link" data-action="port-skip">Continue without it</button>
+        <button class="link" data-action="port-skip" data-keep-enabled>Continue without it</button>
       </div>
     </section>
 
     <!-- Journey step 10 and 11 -->
     <section class="screen" data-screen="setup">
       <h1>Setting everything up</h1>
-      <p class="lede">You can leave this running. Most of it is quick, but the
-      security certificate is issued by a certificate authority and can take
-      several minutes on its own — the line below keeps counting while it
-      works, and nothing is wrong until it says so.</p>
+      <p class="lede">Most of this is quick. The security certificate is issued
+      by a certificate authority and is usually done in seconds, but it can take
+      several minutes on its own — the line below keeps counting while it works,
+      and nothing is wrong until it says so.</p>
+      <p class="hint">You can close this tab or walk away; setup keeps running
+      either way. The browser tab title will say when it's finished.</p>
       <ul class="steps" id="setup"></ul>
     </section>
 
