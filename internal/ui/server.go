@@ -30,6 +30,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/logging"
@@ -56,6 +57,13 @@ type Server struct {
 	// done is closed when the user finishes or quits, so main can wait on it.
 	done     chan struct{}
 	doneOnce sync.Once
+
+	// visited records that the wizard page was actually served at least once.
+	//
+	// Whether a browser appeared is the one thing the launcher cannot report:
+	// it hands the URL to the shell and returns success immediately. This is
+	// the only evidence that anybody is looking at the wizard.
+	visited atomic.Bool
 }
 
 // New builds a server. It does not listen until Start.
@@ -118,6 +126,9 @@ func (s *Server) URL() string {
 
 // Done is closed when the user finishes or closes the wizard.
 func (s *Server) Done() <-chan struct{} { return s.done }
+
+// Visited reports whether the wizard page has been served to a browser.
+func (s *Server) Visited() bool { return s.visited.Load() }
 
 // Close stops serving.
 func (s *Server) Close(ctx context.Context) error {
@@ -251,6 +262,10 @@ func (s *Server) handleIndex(wr http.ResponseWriter, r *http.Request) {
 	wr.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'none'; base-uri 'none'")
 	wr.Header().Set("Referrer-Policy", "no-referrer")
 	wr.Write([]byte(body))
+
+	// Set only after a successful serve with a valid token, so a stray probe
+	// on the port does not count as "the user is looking at the wizard".
+	s.visited.Store(true)
 }
 
 func (s *Server) handleState(wr http.ResponseWriter, r *http.Request) {

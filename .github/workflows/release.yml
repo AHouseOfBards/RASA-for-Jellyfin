@@ -81,6 +81,23 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.value }}"
           LDFLAGS="-s -w -X main.version=${VERSION} -X main.staging=0"
+
+          # No console window on Windows. Someone double-clicking an installer
+          # should not get a black window sitting behind the wizard for the
+          # whole run, looking like something they were not meant to see.
+          #
+          # rasa itself only: rasa-sync runs as a SYSTEM scheduled task with no
+          # interactive desktop, so it never shows one, and leaving it a
+          # console binary keeps it debuggable by hand.
+          #
+          # The binary reattaches to a parent console when it has one, so
+          # running it from a terminal still prints -- and a browser that never
+          # appears is caught by a watchdog that shows the address in a dialog,
+          # since the printed address it used to rely on is now invisible.
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            LDFLAGS="$LDFLAGS -H=windowsgui"
+          fi
+
           go build -trimpath -ldflags "$LDFLAGS" -o "dist/rasa${{ matrix.ext }}" ./cmd/rasa
           go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o "dist/rasa-sync${{ matrix.ext }}" ./cmd/rasa-sync
 

@@ -271,3 +271,46 @@ func TestQuittingDoesNotWaitOutTheShutdownTimeoutOnAnEventStream(t *testing.T) {
 		t.Errorf("Close took %v with an event stream open; it waited out the timeout instead of releasing the stream", took)
 	}
 }
+
+// Whether a browser window ever appeared is the one thing the launcher cannot
+// report: it hands the URL to the shell and returns success immediately, and
+// on an elevated process it has silently gone nowhere before. Serving the page
+// is the only evidence there is, and on Windows release builds -- linked
+// -H=windowsgui, with no console to print a fallback address to -- it is what
+// decides whether the user is shown one at all.
+func TestVisitedOnlyCountsTheWizardActuallyBeingServed(t *testing.T) {
+	s := newServer(t)
+
+	if s.Visited() {
+		t.Fatal("Visited was true before anything was served")
+	}
+
+	// A probe on the port with no token is not a user looking at the wizard.
+	res, err := http.Get(s.base() + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if s.Visited() {
+		t.Error("an unauthorised request counted as a browser loading the wizard")
+	}
+
+	// Neither is an API call: the page is what a browser fetches.
+	req, _ := http.NewRequest(http.MethodGet, s.base()+"/api/state", nil)
+	req.Header.Set(HeaderToken, s.token)
+	if res, err = http.DefaultClient.Do(req); err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if s.Visited() {
+		t.Error("an API call counted as a browser loading the wizard")
+	}
+
+	if res, err = http.Get(s.base() + "/?t=" + s.token); err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if !s.Visited() {
+		t.Error("serving the wizard page did not count as a visit")
+	}
+}

@@ -55,6 +55,12 @@ func main() {
 		prod    = flag.Bool("production-certificates", false, "use Let's Encrypt production rather than staging")
 		email   = flag.String("email", "", "optional address for certificate expiry notices")
 	)
+	// Before any output. A release build on Windows is linked -H=windowsgui and
+	// has no console of its own; this reattaches to the shell's when there is
+	// one, so running from a terminal still prints and double-clicking still
+	// shows no window.
+	attachParentConsole()
+
 	flag.Parse()
 
 	if *showVer {
@@ -188,6 +194,7 @@ func run(ctx context.Context, o options) error {
 		if err := ui.Open(srv.URL()); err != nil {
 			log.Warn("could not open a browser", slog.Any("err", err))
 		}
+		go watchForABrowser(ctx, srv, log)
 	}
 
 	select {
@@ -206,6 +213,39 @@ func authorityName(ca string) string {
 		return "staging"
 	}
 	return "production"
+}
+
+// browserGracePeriod is how long to wait for a browser to load the wizard
+// before assuming none is coming. Long enough for a cold browser start on a
+// slow machine, short enough that nobody has given up first.
+const browserGracePeriod = 25 * time.Second
+
+// watchForABrowser tells the user where the wizard is if no browser ever
+// reached it.
+//
+// Whether a window appeared is the one thing the launcher cannot report: it
+// hands the URL to the shell and returns success immediately, and on an
+// elevated process it has silently gone nowhere before. Printing the address
+// used to be the way out of that, and release builds on Windows now have no
+// console to print to, so the only remaining evidence is whether the page was
+// ever fetched.
+func watchForABrowser(ctx context.Context, srv *ui.Server, log *logging.Logger) {
+	select {
+	case <-ctx.Done():
+		return
+	case <-srv.Done():
+		return
+	case <-time.After(browserGracePeriod):
+	}
+	if srv.Visited() {
+		return
+	}
+	log.Warn("no browser loaded the wizard", slog.Duration("after", browserGracePeriod))
+	ui.Notify("RASA for Jellyfin",
+		"Setup is running, but no browser opened.\n\n"+
+			"Copy this address into a browser to continue:\n\n"+
+			srv.URL()+
+			"\n\nLeave RASA running while you do.")
 }
 
 // findCaddy locates the bundled proxy.
