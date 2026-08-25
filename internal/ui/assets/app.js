@@ -93,6 +93,10 @@ async function get(path) {
 
 let model = null;
 let installStarted = false;
+// Set once the wizard has been told to quit. The server stops serving as a
+// result, so every snapshot, reconnect and status line after that point is
+// noise about a teardown the user deliberately asked for.
+let closing = false;
 let nameTouched = false;
 
 const GLYPH = {
@@ -405,6 +409,44 @@ function renderDone() {
   box.hidden = list.childElementCount === 0;
 }
 
+/* The end of the run.
+ *
+ * Set before the quit request rather than after it: the server stops serving
+ * as a result of that request, so anything waiting on its response is waiting
+ * on a connection that is being torn down. */
+function farewell() {
+  closing = true;
+
+  const removed = model && model.screen === "removed";
+  document.getElementById("closed-title").textContent =
+    removed ? "You can close this tab" : "All set — you can close this tab";
+  document.getElementById("closed-lede").textContent = removed
+    ? "Remote access has been removed and RASA has stopped running."
+    : "Setup has finished and RASA has stopped running. Your remote access keeps working without it.";
+
+  const url = model && model.result && model.result.url;
+  const box = document.getElementById("closed-address");
+  if (url && !removed) {
+    document.getElementById("closed-url").textContent = url;
+    box.hidden = false;
+  } else {
+    box.hidden = true;
+  }
+
+  const recovery = model && model.result && model.result.recovery_file;
+  document.getElementById("closed-recovery").textContent =
+    recovery && !removed ? `Everything is written down in ${recovery}.` : "";
+
+  status("");
+  show("closed");
+  // After show, which sets a title of its own from the screen name.
+  document.title = removed ? "Removed — RASA" : "All set — RASA";
+
+  // Refused for a tab the operating system opened, which is this one, but it
+  // costs nothing and does work when a browser was configured to allow it.
+  try { window.close(); } catch { /* expected */ }
+}
+
 function renderRemoved() {
   document.getElementById("removed-detail").textContent =
     "Nothing is listening for connections from outside any more, and the stored key has been deleted.";
@@ -420,6 +462,7 @@ function renderRemoved() {
 }
 
 function render(next) {
+  if (closing) return;
   model = next;
 
   document.getElementById("version").textContent = model.version || "";
@@ -436,6 +479,10 @@ function render(next) {
   }
   document.getElementById("name-submit").disabled =
     model.busy || document.getElementById("name-label").value.trim().length === 0;
+
+  // The server decides where back can go, because it is the only thing that
+  // knows what has already been created for real.
+  document.getElementById("back-button").hidden = !model.can_back;
 
   document.getElementById("remove-button").hidden = !model.repair;
   if (model.repair) {
@@ -589,6 +636,10 @@ function wire() {
   document.getElementById("name-label").addEventListener("input", scheduleCheck);
   document.getElementById("name-parent").addEventListener("change", scheduleCheck);
   document.getElementById("dynu-key").addEventListener("input", scheduleKeyCheck);
+  document.getElementById("back-button").addEventListener("click", () => {
+    closeConfirm();
+    post("/api/back");
+  });
 
   // The marker only means anything while the tab is in the background, so it
   // has to be recomputed when that changes rather than only on a transition.
@@ -675,8 +726,8 @@ function wire() {
         post("/api/port/skip");
         break;
       case "quit":
+        farewell();
         await post("/api/quit");
-        status("You can close this window.");
         break;
       case "open-dynu":
         // A new tab rather than an embedded frame: Dynu, like every sign-up
@@ -719,6 +770,8 @@ function connect() {
   const source = new EventSource(`/api/events?t=${encodeURIComponent(TOKEN)}`);
   source.onmessage = (e) => render(JSON.parse(e.data));
   source.onerror = () => {
+    // Expected: quitting is what closed the stream.
+    if (closing) { source.close(); return; }
     // EventSource reconnects on its own. Setup keeps running regardless: the
     // wizard is not driven by this connection, only reported through it.
     status("Reconnecting…");

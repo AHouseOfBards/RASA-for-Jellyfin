@@ -192,8 +192,16 @@ type Model struct {
 	Busy bool `json:"busy"`
 	// Repair is true when a previous setup was found, which turns the welcome
 	// screen into a repair screen (SPEC.md §9, step 4).
-	Repair bool        `json:"repair"`
-	Phase  state.Phase `json:"phase"`
+	Repair bool `json:"repair"`
+	// CanBack is whether the current screen has somewhere to go back to.
+	//
+	// Derived rather than stored, and recomputed centrally on every update, so
+	// the button cannot appear on a screen whose previous step has already
+	// happened for real. It is false from the port screen onwards: claiming a
+	// name creates a hostname on the user's Dynu account, and a button that
+	// says "back" must not mean "and now you own two of them".
+	CanBack bool        `json:"can_back"`
+	Phase   state.Phase `json:"phase"`
 
 	Checks []Step `json:"checks"`
 	Setup  []Step `json:"setup"`

@@ -21,7 +21,14 @@
        you are on or how many are left. -->
   <nav class="progress" id="progress" hidden aria-label="Setup progress">
     <ol class="rail" id="rail"></ol>
-    <p class="rail-caption" id="rail-caption"></p>
+    <div class="rail-foot">
+      <p class="rail-caption" id="rail-caption"></p>
+      <!-- Hidden rather than disabled from the port step onwards: claiming a
+           name creates a hostname on the user's Dynu account, so there is
+           genuinely nowhere to go back to, and a permanently greyed-out
+           control reads as a bug. The server decides, via can_back. -->
+      <button class="back" id="back-button" type="button" hidden>&larr; Back</button>
+    </div>
   </nav>
 
   <main id="main">
@@ -263,6 +270,22 @@
       <div class="actions">
         <button class="primary" data-action="quit">Finish</button>
       </div>
+    </section>
+
+    <!-- The last thing anyone sees.
+         A tab cannot close itself unless script opened it, and this one was
+         opened by the operating system, so window.close() is refused. Clicking
+         Finish therefore did nothing visible at all except one line in the
+         footer status. This screen is what "it worked, you're done" looks
+         like when the honest answer is "now close the tab yourself". -->
+    <section class="screen" data-screen="closed">
+      <h1 id="closed-title">You can close this tab</h1>
+      <p class="lede" id="closed-lede">Setup has finished and RASA has stopped running.</p>
+      <div class="address" id="closed-address" hidden>
+        <p class="hint">Your address, one last time:</p>
+        <code id="closed-url"></code>
+      </div>
+      <p class="hint" id="closed-recovery"></p>
     </section>
 
   </main>

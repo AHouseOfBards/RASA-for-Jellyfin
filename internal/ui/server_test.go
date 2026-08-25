@@ -232,3 +232,42 @@ func TestURLCarriesTheToken(t *testing.T) {
 		t.Errorf("URL %q is not on loopback", s.URL())
 	}
 }
+
+// Shutdown waits for connections to become idle, and an event stream never
+// becomes idle: it is an open response by design. A browser is always attached
+// by the time anyone clicks Finish, so without the stream being released the
+// wizard burned its whole shutdown timeout every single time - measured at
+// 3.2 seconds against 0.2 with no stream open, which is a console window
+// sitting there after the user thinks they are done.
+func TestQuittingDoesNotWaitOutTheShutdownTimeoutOnAnEventStream(t *testing.T) {
+	s := newServer(t)
+
+	req, err := http.NewRequest(http.MethodGet, s.base()+"/api/events?t="+s.token, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+
+	// Read the first snapshot so the stream is definitely established rather
+	// than merely requested.
+	if _, err := bufio.NewReader(res.Body).ReadString('\n'); err != nil {
+		t.Fatalf("event stream never delivered anything: %v", err)
+	}
+
+	// The same timeout main uses, so a regression fails here rather than
+	// silently costing the user three seconds.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	if err := s.Close(ctx); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Errorf("Close took %v with an event stream open; it waited out the timeout instead of releasing the stream", took)
+	}
+}

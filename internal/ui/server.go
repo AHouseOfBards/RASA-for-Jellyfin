@@ -124,6 +124,15 @@ func (s *Server) Close(ctx context.Context) error {
 	if s.srv == nil {
 		return nil
 	}
+	// Release the event streams first.
+	//
+	// Shutdown waits for connections to become idle, and an SSE stream never
+	// does: it is an open response by design. With a browser attached — which
+	// is always — Shutdown therefore burned its entire timeout before giving
+	// up, so clicking Finish left the console sitting there for a measured
+	// 3.2 seconds against 0.2 with no stream open. finish is idempotent, so
+	// this is safe whether the user quit or the run was interrupted.
+	s.finish()
 	return s.srv.Shutdown(ctx)
 }
 
@@ -148,6 +157,9 @@ func (s *Server) routes() {
 	})))
 	s.mux.HandleFunc("/api/dynu/key", s.guard(s.async("dynu", func(ctx context.Context, body request) error {
 		return s.w.SetDynuKey(ctx, body.Key)
+	})))
+	s.mux.HandleFunc("/api/back", s.guard(s.async("back", func(ctx context.Context, body request) error {
+		return s.w.Back(ctx)
 	})))
 	s.mux.HandleFunc("/api/dynu/check", s.guard(s.handleDynuCheck))
 	s.mux.HandleFunc("/api/name/check", s.guard(s.handleNameCheck))
@@ -269,6 +281,12 @@ func (s *Server) handleEvents(wr http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-r.Context().Done():
+			return
+		case <-s.done:
+			// The wizard is finished or shutting down. Returning here is what
+			// lets the connection go idle so Shutdown can complete promptly
+			// rather than waiting out its timeout on a stream that will never
+			// end on its own.
 			return
 		case <-ping.C:
 			fmt.Fprint(wr, ": keepalive\n\n")

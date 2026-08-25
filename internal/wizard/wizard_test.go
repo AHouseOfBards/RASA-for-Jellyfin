@@ -1150,3 +1150,66 @@ func TestRejectedDynuKeySaysSo(t *testing.T) {
 		t.Error("a rejection with no message tells the user nothing")
 	}
 }
+
+// Back exists for the screens before a hostname is created, and must not exist
+// after. Claiming calls into Dynu and creates a real record on the user's
+// account; a back button from there would either lie about undoing it or
+// quietly spend a second of their free hostnames.
+func TestBackStopsWhereReversibilityDoes(t *testing.T) {
+	cases := []struct {
+		from    Screen
+		repair  bool
+		want    Screen
+		canBack bool
+	}{
+		{from: ScreenJellyfin, want: ScreenWelcome, canBack: true},
+		{from: ScreenDynu, want: ScreenJellyfin, canBack: true},
+		{from: ScreenName, want: ScreenDynu, canBack: true},
+		// A repair run already had the key and never saw the Dynu screen, so
+		// "back" there would go somewhere the user has not been.
+		{from: ScreenName, repair: true, want: ScreenJellyfin, canBack: true},
+
+		// Everything downstream of the claim.
+		{from: ScreenPort, want: ScreenPort, canBack: false},
+		{from: ScreenSetup, want: ScreenSetup, canBack: false},
+		{from: ScreenDone, want: ScreenDone, canBack: false},
+		{from: ScreenWelcome, want: ScreenWelcome, canBack: false},
+		{from: ScreenRemoved, want: ScreenRemoved, canBack: false},
+	}
+
+	for _, c := range cases {
+		h := newHarness(t, nil)
+		h.w.update(func(m *Model) {
+			m.Screen = c.from
+			m.Repair = c.repair
+		})
+
+		if got := h.w.Model().CanBack; got != c.canBack {
+			t.Errorf("from %s (repair=%v): CanBack = %v, want %v", c.from, c.repair, got, c.canBack)
+		}
+		if err := h.w.Back(context.Background()); err != nil {
+			t.Fatalf("from %s: Back: %v", c.from, err)
+		}
+		if got := h.w.Model().Screen; got != c.want {
+			t.Errorf("from %s (repair=%v): went to %s, want %s", c.from, c.repair, got, c.want)
+		}
+	}
+}
+
+// The error belonged to the screen being left. Carried back, it makes the
+// previous step look broken when the user has just chosen to redo it.
+func TestBackClearsTheErrorItLeaves(t *testing.T) {
+	h := newHarness(t, nil)
+	h.w.update(func(m *Model) { m.Screen = ScreenName })
+	_ = h.w.fail("domain", rasaerr.HostnameTaken("taken.freeddns.org", nil))
+
+	if h.w.Model().Err == nil {
+		t.Fatal("setup: expected an error on the model")
+	}
+	if err := h.w.Back(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.w.Model().Err != nil {
+		t.Error("the error followed the user back to a screen it did not come from")
+	}
+}

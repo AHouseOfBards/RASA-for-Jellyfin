@@ -217,6 +217,9 @@ func (w *Wizard) Subscribe() (<-chan Model, func()) {
 func (w *Wizard) update(fn func(m *Model)) {
 	w.mu.Lock()
 	fn(&w.model)
+	// Centrally, so no caller can forget it and leave a back button offering a
+	// journey the wizard has already made irreversible.
+	w.model.CanBack = previousScreen(w.model.Screen, w.model.Repair) != ""
 	w.model.Revision++
 	snapshot := w.model.clone()
 	for ch := range w.subs {
@@ -623,6 +626,59 @@ func (w *Wizard) SetDynuKey(ctx context.Context, key string) error {
 	w.update(func(m *Model) {
 		m.DynuKey = true
 		m.Screen = ScreenName
+	})
+	return nil
+}
+
+// previousScreen is where "back" goes from here, or "" where it cannot go
+// anywhere.
+//
+// Only the screens before a name is claimed have an answer. Everything from
+// the port step onwards is downstream of w.claim, which creates a real
+// hostname on the user's Dynu account: there is no undo for that inside RASA,
+// and offering one that quietly spent a second of their free hostnames would
+// be worse than offering none. The confirmation on the name screen exists
+// because this boundary is where reversibility ends.
+func previousScreen(current Screen, repair bool) Screen {
+	switch current {
+	case ScreenJellyfin:
+		return ScreenWelcome
+	case ScreenDynu:
+		return ScreenJellyfin
+	case ScreenName:
+		// A repair run already has the key and never showed the Dynu screen,
+		// so going "back" to it would be going somewhere the user has not been.
+		if repair {
+			return ScreenJellyfin
+		}
+		return ScreenDynu
+	default:
+		return ""
+	}
+}
+
+// Back returns to the previous screen.
+//
+// Nothing is undone, because nothing before this boundary needs undoing:
+// signing in again replaces the session, and entering a key again replaces the
+// key. It is the screen that moves, not the state.
+func (w *Wizard) Back(ctx context.Context) error {
+	if err := w.begin(); err != nil {
+		return err
+	}
+	defer w.end()
+
+	w.mu.Lock()
+	prev := previousScreen(w.model.Screen, w.model.Repair)
+	w.mu.Unlock()
+	if prev == "" {
+		return nil
+	}
+	w.update(func(m *Model) {
+		m.Screen = prev
+		// The error belonged to the screen being left. Carrying it back makes
+		// the previous step look broken when it is not.
+		m.Err = nil
 	})
 	return nil
 }
