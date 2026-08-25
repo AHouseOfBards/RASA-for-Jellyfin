@@ -25,7 +25,17 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 )
+
+// PropagationTimeout is how long Caddy waits for the DNS-01 challenge record
+// to become visible before giving up.
+//
+// It is exported because anything that waits on issuance has to outlast it.
+// RASA's own certificate wait was once the same five minutes, so a stalled
+// challenge made RASA report failure at the exact moment Caddy was still
+// working — observed on a real run, which failed at 4m55s and told us nothing.
+const PropagationTimeout = 5 * time.Minute
 
 // ACME endpoints. Staging is the default in development builds because Let's
 // Encrypt allows only five failed validations per hostname per hour, and
@@ -57,10 +67,16 @@ type Config struct {
 	// explicitly. See the comment on the generated tls block.
 	OwnDomain string
 
-	// LogPath is where Caddy writes its structured log. Pointing it at RASA's
-	// shared directory matters because Caddy otherwise logs to the service
-	// log, which is awkward to find on Windows (SPEC.md §15).
+	// LogPath is where Caddy writes its runtime log: startup, TLS, and every
+	// message about certificate issuance. Pointing it at RASA's shared
+	// directory matters because Caddy otherwise logs nowhere findable under a
+	// Windows service (SPEC.md §15).
 	LogPath string
+
+	// AccessLogPath, if set, receives one line per HTTP request. A separate
+	// file from LogPath on purpose: request volume would bury the issuance
+	// messages a failure actually needs.
+	AccessLogPath string
 
 	// ACMECA overrides the certificate authority. Empty means production.
 	ACMECA string
@@ -133,6 +149,27 @@ func (c Config) Generate() (string, error) {
 	if c.ACMECA != "" {
 		fmt.Fprintf(&b, "\tacme_ca %s\n", c.ACMECA)
 	}
+	if c.LogPath != "" {
+		// This configures the DEFAULT logger, and it is the one that matters.
+		//
+		// A `log` directive inside a site block sets up HTTP access logging
+		// for that site and nothing else. Every message about certificate
+		// issuance — the DNS challenge, the provider's API calls, the ACME
+		// errors — goes to the default logger instead. Without this block those
+		// messages go nowhere at all under a Windows service, which is exactly
+		// what happened on the first real run: a stalled issuance produced a
+		// completely empty caddy.log and five minutes of silence.
+		//
+		// The most failure-prone step in the product cannot be the one with no
+		// diagnostics.
+		b.WriteString("\tlog {\n")
+		fmt.Fprintf(&b, "\t\toutput file %s {\n", quoteIfNeeded(c.LogPath))
+		b.WriteString("\t\t\troll_size 10MiB\n")
+		b.WriteString("\t\t\troll_keep 5\n")
+		b.WriteString("\t\t}\n")
+		b.WriteString("\t\tformat json\n")
+		b.WriteString("\t}\n")
+	}
 	b.WriteString("}\n\n")
 
 	fmt.Fprintf(&b, "%s {\n", c.SiteAddress())
@@ -157,7 +194,7 @@ func (c Config) Generate() (string, error) {
 	fmt.Fprintf(&b, "\t\tresolvers %s\n", strings.Join(resolvers, " "))
 	// Dynu propagation runs to a couple of minutes; the default gives up
 	// sooner and burns a validation attempt against the five-per-hour cap.
-	b.WriteString("\t\tpropagation_timeout 5m\n")
+	fmt.Fprintf(&b, "\t\tpropagation_timeout %s\n", PropagationTimeout)
 	b.WriteString("\t}\n")
 
 	b.WriteString("\n\tencode zstd gzip\n")
@@ -177,11 +214,14 @@ func (c Config) Generate() (string, error) {
 	b.WriteString("\t\t}\n")
 	b.WriteString("\t}\n")
 
-	if c.LogPath != "" {
+	if c.AccessLogPath != "" {
+		// Access logging, deliberately a different file from the runtime log
+		// above: one line per request would otherwise bury the handful of
+		// lines that explain a failed certificate.
 		b.WriteString("\n\tlog {\n")
-		fmt.Fprintf(&b, "\t\toutput file %s {\n", quoteIfNeeded(c.LogPath))
+		fmt.Fprintf(&b, "\t\toutput file %s {\n", quoteIfNeeded(c.AccessLogPath))
 		b.WriteString("\t\t\troll_size 10MiB\n")
-		b.WriteString("\t\t\troll_keep 5\n")
+		b.WriteString("\t\t\troll_keep 3\n")
 		b.WriteString("\t\t}\n")
 		b.WriteString("\t\tformat json\n")
 		b.WriteString("\t}\n")

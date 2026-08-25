@@ -208,10 +208,11 @@ func (w *Wizard) installProxy(ctx context.Context) error {
 		// A Dynu DDNS hostname is its own zone: the record sits at the apex,
 		// not under freeddns.org (SPEC.md §12). The provider needs that stated
 		// or it looks for the record in the wrong place.
-		OwnDomain: hostname,
-		LogPath:   w.opts.Layout.CaddyLog(),
-		ACMECA:    w.opts.ACMECA,
-		Email:     w.opts.Email,
+		OwnDomain:     hostname,
+		LogPath:       w.opts.Layout.CaddyLog(),
+		AccessLogPath: w.opts.Layout.CaddyAccessLog(),
+		ACMECA:        w.opts.ACMECA,
+		Email:         w.opts.Email,
 	}
 	if err := proxy.Install(ctx, cfg, map[string]string{TokenEnvVar: key}); err != nil {
 		w.step(SetupProxy, StepFailed, "")

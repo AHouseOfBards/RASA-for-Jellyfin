@@ -315,8 +315,13 @@ func (w *Wizard) save() {
 
 func (w *Wizard) advance(to state.Phase) {
 	w.mu.Lock()
-	if err := w.st.Advance(to); err != nil {
-		w.log.Warn("could not record phase", slog.String("to", string(to)), slog.Any("err", err))
+	// A resumed run re-executes earlier steps idempotently and then tries to
+	// record a phase it is already past. That is success, not a fault, so it
+	// is silent rather than a warning about an "illegal transition".
+	if !w.st.Reached(to) {
+		if err := w.st.Advance(to); err != nil {
+			w.log.Warn("could not record phase", slog.String("to", string(to)), slog.Any("err", err))
+		}
 	}
 	w.mu.Unlock()
 	w.save()

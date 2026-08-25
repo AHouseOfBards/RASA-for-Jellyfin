@@ -80,8 +80,14 @@ func (l Layout) RecoveryFile() string {
 // RASALog is RASA's own structured setup log.
 func (l Layout) RASALog() string { return filepath.Join(l.LogDir, "rasa.log") }
 
-// CaddyLog is where the generated Caddyfile is told to write.
+// CaddyLog is the proxy's runtime log: startup, TLS, and everything about
+// certificate issuance. This is the file to read when a certificate fails.
 func (l Layout) CaddyLog() string { return filepath.Join(l.LogDir, "caddy.log") }
+
+// CaddyAccessLog receives one line per HTTP request. Kept apart from CaddyLog
+// so that request volume cannot bury the handful of lines that explain a
+// failed certificate.
+func (l Layout) CaddyAccessLog() string { return filepath.Join(l.LogDir, "caddy-access.log") }
 
 // SyncLog is where the scheduled DDNS task writes.
 func (l Layout) SyncLog() string { return filepath.Join(l.LogDir, "sync.log") }

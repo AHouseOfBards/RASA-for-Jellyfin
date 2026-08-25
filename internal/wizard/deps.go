@@ -111,9 +111,12 @@ func (w realCertWaiter) Wait(ctx context.Context, hostname string, port int, onP
 	}
 	timeout := w.Timeout
 	if timeout <= 0 {
-		// DNS-01 issuance normally lands well inside two minutes; the extra
-		// room covers a slow propagation check inside Caddy itself.
-		timeout = 5 * time.Minute
+		// Must exceed what the Caddyfile allows Caddy for propagation, plus
+		// the ACME round trips after it. Both were once five minutes, so a
+		// stalled challenge made RASA declare failure at 4m55s while Caddy was
+		// still inside its own window — the user saw a red line and no reason,
+		// and the log that would have explained it was empty.
+		timeout = caddy.PropagationTimeout + 4*time.Minute
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

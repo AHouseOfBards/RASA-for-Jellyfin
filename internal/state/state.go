@@ -47,6 +47,38 @@ var transitions = map[Phase][]Phase{
 	Degraded:           {Running, Probed},
 }
 
+// order is the sequence a successful setup passes through. Phases outside it
+// (Degraded) are not comparable and are treated as "not reached".
+var order = []Phase{
+	New, Probed, DomainClaimed, PortsMapped, DNSVisible,
+	CertIssued, JellyfinConfigured, Verified, Running,
+}
+
+func indexOf(p Phase) int {
+	for i, q := range order {
+		if q == p {
+			return i
+		}
+	}
+	return -1
+}
+
+// Reached reports whether setup is already at or past p.
+//
+// This exists because the pipeline is re-runnable and each step records its
+// own phase. A run that resumes part-way through re-executes earlier steps
+// idempotently and then tries to record a phase it has already passed, which
+// Advance correctly rejects as a backwards transition. That produced a
+// confusing "illegal transition PORTS_MAPPED -> DOMAIN_CLAIMED" warning on a
+// perfectly healthy run: nothing was wrong, the work had simply been done.
+func (s *State) Reached(p Phase) bool {
+	here, want := indexOf(s.Phase), indexOf(p)
+	if here < 0 || want < 0 {
+		return false
+	}
+	return here >= want
+}
+
 // Mode is the access strategy chosen by the mode router (SPEC.md §5).
 type Mode string
 

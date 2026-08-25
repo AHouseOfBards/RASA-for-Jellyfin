@@ -293,3 +293,51 @@ func TestEnvPlaceholderBracesDoNotUnbalance(t *testing.T) {
 		t.Fatal("env placeholder missing")
 	}
 }
+
+// Certificate issuance messages go to Caddy's DEFAULT logger, not to a site's
+// access log. Without a log block in the global options they go nowhere at all
+// under a Windows service — which is how a stalled issuance produced an empty
+// caddy.log and five minutes of unexplained silence on the first real run.
+func TestRuntimeLogIsConfiguredGlobally(t *testing.T) {
+	cfg := Config{
+		Hostname:        "mymedia.freeddns.org",
+		ListenPort:      443,
+		UpstreamAddress: "127.0.0.1:8096",
+		DynuAPIKeyEnv:   "RASA_DYNU_TOKEN",
+		OwnDomain:       "mymedia.freeddns.org",
+		LogPath:         `C:\ProgramData\RASA\logs\caddy.log`,
+	}
+	out, err := cfg.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	global := out[:strings.Index(out, "mymedia.freeddns.org {")]
+	if !strings.Contains(global, "log {") {
+		t.Fatalf("the global options block has no log directive, so nothing records issuance:\n%s", global)
+	}
+	if !strings.Contains(global, "caddy.log") {
+		t.Errorf("the global log does not name the runtime log file:\n%s", global)
+	}
+}
+
+// RASA waits on issuance, so its own deadline has to outlast the one handed to
+// Caddy. Both were once five minutes, and a stalled challenge made RASA report
+// failure at 4m55s while Caddy was still inside its window.
+func TestPropagationTimeoutIsEmittedFromTheConstant(t *testing.T) {
+	cfg := Config{
+		Hostname:        "mymedia.freeddns.org",
+		ListenPort:      443,
+		UpstreamAddress: "127.0.0.1:8096",
+		DynuAPIKeyEnv:   "RASA_DYNU_TOKEN",
+		OwnDomain:       "mymedia.freeddns.org",
+	}
+	out, err := cfg.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "propagation_timeout " + PropagationTimeout.String()
+	if !strings.Contains(out, want) {
+		t.Errorf("generated file does not carry %q", want)
+	}
+}
