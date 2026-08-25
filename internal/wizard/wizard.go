@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/netip"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -349,6 +350,7 @@ func (w *Wizard) Start(ctx context.Context) error {
 	})
 
 	res := w.opts.Probe(ctx)
+	w.reclaimOwnPort(ctx, &res)
 	d := mode.Choose(res)
 
 	w.mu.Lock()
@@ -423,6 +425,41 @@ func (w *Wizard) Start(ctx context.Context) error {
 
 	w.update(func(m *Model) { m.Screen = ScreenJellyfin })
 	return nil
+}
+
+// reclaimOwnPort stops RASA treating its own proxy as a port conflict.
+//
+// On a repair run the Caddy service installed by the previous run is still
+// listening on the chosen port, so the probe correctly reports it busy and the
+// mode router falls back to 8443. The user then gets a worse address than they
+// had, a warning blaming "another program", and a second listener — all
+// because RASA did not recognise itself. Observed on a real repair, which
+// turned a working https://name:443 into https://name:8443.
+//
+// The test is deliberately narrow: the port must be the one already recorded
+// in state, and our own service must be running. Anything else is a genuine
+// conflict and still falls back.
+func (w *Wizard) reclaimOwnPort(ctx context.Context, res *probe.Result) {
+	w.mu.Lock()
+	port := w.st.ListenPort
+	w.mu.Unlock()
+
+	if port == 0 || res.Ports.Free == nil || res.Ports.Free[port] {
+		return
+	}
+	mgr, err := w.opts.NewServices()
+	if err != nil {
+		return
+	}
+	status, err := mgr.ServiceStatus(ctx, service.CaddyServiceName)
+	if err != nil || status != service.StatusRunning {
+		return
+	}
+
+	res.Ports.Free[port] = true
+	delete(res.Ports.Holder, port)
+	w.log.WithPhase("probe").Decision("port "+strconv.Itoa(port), "kept",
+		"it is held by RASA's own proxy from a previous run, not by another program")
 }
 
 func stateFor(ok bool) StepState {

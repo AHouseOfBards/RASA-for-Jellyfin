@@ -175,6 +175,7 @@ type fakeServices struct {
 	services         []service.Definition
 	timers           []service.Timer
 	removeServiceErr error
+	status           service.Status
 }
 
 func (f *fakeServices) InstallService(ctx context.Context, d service.Definition) error {
@@ -187,6 +188,9 @@ func (f *fakeServices) RemoveService(ctx context.Context, n string) error {
 	return f.removeServiceErr
 }
 func (f *fakeServices) ServiceStatus(ctx context.Context, n string) (service.Status, error) {
+	if f.status != "" {
+		return f.status, nil
+	}
 	return service.StatusRunning, nil
 }
 func (f *fakeServices) InstallTimer(ctx context.Context, t service.Timer) error {
@@ -967,5 +971,88 @@ func TestPortScreenIsNeverShownEmpty(t *testing.T) {
 	}
 	if len(m.Port.Instructions) == 0 || len(m.Port.Values) == 0 {
 		t.Fatal("the port screen was shown with nothing on it")
+	}
+}
+
+// A repair run finds its own proxy holding the port. Treating that as a
+// conflict downgrades a working https://name:443 to https://name:8443 and
+// blames "another program" — observed on a real repair.
+func TestRepairKeepsThePortItsOwnProxyHolds(t *testing.T) {
+	dir := t.TempDir()
+	layout := paths.UnderRoot(dir)
+	if err := layout.EnsureDirs(); err != nil {
+		t.Fatal(err)
+	}
+	store := state.NewStore(layout.StateFile())
+
+	prior := state.NewState("earlier")
+	prior.Reset(state.Running)
+	prior.Hostname = "mymedia.freeddns.org"
+	prior.ListenPort = 443
+	if err := store.Save(prior); err != nil {
+		t.Fatal(err)
+	}
+
+	h := newHarness(t, func(o *Options) {
+		o.Layout = layout
+		o.Store = store
+	})
+	// 443 busy, held by our own running service.
+	seed := directProbe()
+	seed.Ports = probe.Ports{
+		Free:   map[int]bool{443: false, 8443: true},
+		Holder: map[int]string{443: "caddy.exe"},
+	}
+	h.seed = seed
+
+	if err := h.w.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.w.Model().ListenPort; got != 443 {
+		t.Errorf("listen port = %d, want 443 kept rather than falling back", got)
+	}
+	for _, warn := range h.w.Model().Warnings {
+		if warn.Code == "non_standard_port" {
+			t.Error("the user was warned about a port conflict with RASA's own proxy")
+		}
+	}
+}
+
+// A port held by something that is not ours must still fall back.
+func TestGenuineConflictStillFallsBack(t *testing.T) {
+	dir := t.TempDir()
+	layout := paths.UnderRoot(dir)
+	if err := layout.EnsureDirs(); err != nil {
+		t.Fatal(err)
+	}
+	store := state.NewStore(layout.StateFile())
+	prior := state.NewState("earlier")
+	prior.Reset(state.Running)
+	prior.Hostname = "mymedia.freeddns.org"
+	prior.ListenPort = 443
+	if err := store.Save(prior); err != nil {
+		t.Fatal(err)
+	}
+
+	h := newHarness(t, func(o *Options) {
+		o.Layout = layout
+		o.Store = store
+		// Our proxy is NOT running, so whatever holds 443 belongs to someone else.
+		o.NewServices = func() (service.Manager, error) {
+			return &fakeServices{status: service.StatusStopped}, nil
+		}
+	})
+	seed := directProbe()
+	seed.Ports = probe.Ports{
+		Free:   map[int]bool{443: false, 8443: true},
+		Holder: map[int]string{443: "nginx.exe"},
+	}
+	h.seed = seed
+
+	if err := h.w.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.w.Model().ListenPort; got != 8443 {
+		t.Errorf("listen port = %d, want the 8443 fallback for a real conflict", got)
 	}
 }

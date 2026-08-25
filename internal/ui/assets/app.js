@@ -222,7 +222,32 @@ function renderPort() {
   reservation.textContent = p.reservation_note || "";
 }
 
+// The headline states only what was actually established.
+//
+// It used to read "Your server is reachable" unconditionally, directly above a
+// note explaining that reachability could not be confirmed - and on a network
+// where inbound connections are firewalled outright, that headline is simply
+// false. Three outcomes, three headlines.
+const DONE_COPY = {
+  reachable: {
+    title: "Your server is reachable",
+    lede: "Use this address from anywhere. It works in a browser and in every Jellyfin app.",
+  },
+  inconclusive: {
+    title: "Setup is finished",
+    lede: "Everything is configured. Whether it can be reached from outside couldn't be checked from this network — see below.",
+  },
+  unreachable: {
+    title: "Setup is finished, but nothing can reach it yet",
+    lede: "Your address and certificate are ready. The last step is letting connections in from outside — see below.",
+  },
+};
+
 function renderDone() {
+  const copy = DONE_COPY[model.result.reachable] || DONE_COPY.inconclusive;
+  document.getElementById("done-title").textContent = copy.title;
+  document.getElementById("done-lede").textContent = copy.lede;
+
   document.getElementById("final-url").textContent = model.result.url || "";
 
   // The QR is inlined as a data URI: the page loads under a policy that
