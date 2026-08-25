@@ -163,10 +163,14 @@ jobs:
           files: |
             assets/rasa-*
             assets/SHA256SUMS.txt
-          # Written for whoever lands on the download page, so it says how to
-          # install it and what to expect afterwards, and nothing else. What
-          # changed goes in the tag message above; how it works goes in the
-          # README.
+          # Written for whoever lands on the download page: how to install it
+          # and what to expect afterwards, and nothing else. How it works goes
+          # in the README.
+          #
+          # This replaces the tag message rather than adding to it, so a
+          # what's-new list has to be written onto the release by hand after
+          # publishing. Worth knowing before wording a tag message as though
+          # anyone will read it.
           body: |
             ## Installing
 
