@@ -17,17 +17,16 @@ import (
 var launcher = func(ctx context.Context, url string) *exec.Cmd {
 	switch runtime.GOOS {
 	case "windows":
-		// explorer.exe rather than rundll32 or "cmd /c start", because RASA
-		// runs elevated. Explorer hands the URL to the logged-in user's
-		// session, so the browser opens as that user; the other two launch it
-		// as administrator, which browsers increasingly refuse outright and
-		// which nobody should want anyway.
+		// The documented way to invoke the URL protocol handler.
 		//
-		// It exits 1 on success, so its status is deliberately ignored. That
-		// is safe here only because the caller prints the address regardless:
-		// a launcher that cannot report failure must never be the only way to
-		// reach the wizard.
-		return exec.CommandContext(ctx, "explorer.exe", url)
+		// explorer.exe was tried first, on the theory that it would hand the
+		// URL to the logged-in user's session and so avoid opening a browser
+		// as administrator. It does not: given a URL it treats it as a path,
+		// finds nothing, and opens a folder window instead. Whatever RASA does
+		// here, an elevated process launching a browser gets an elevated
+		// browser — though in practice a browser already running as the user
+		// takes the URL and handles it in that existing instance.
+		return exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", url)
 	case "darwin":
 		return exec.CommandContext(ctx, "open", url)
 	default:
