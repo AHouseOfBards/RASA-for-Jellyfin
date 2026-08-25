@@ -176,9 +176,15 @@ function renderPort() {
 
   if (!p.instructions || p.instructions.length === 0) {
     guide.hidden = true;
-    lede.textContent = p.open
-      ? "Your router opened the port on its own. Nothing for you to do."
-      : "Checking whether your router will open the port for you.";
+    // Only claim to be working when something actually is. This screen used to
+    // say "checking..." while sitting idle waiting for a click.
+    if (model.busy) {
+      lede.textContent = "Asking your router to open the port.";
+    } else if (p.open) {
+      lede.textContent = "Your router opened the port on its own. Nothing for you to do.";
+    } else {
+      lede.textContent = "Your router didn't open the port, and RASA couldn't work out how to guide you through it. You can try again, or continue without it.";
+    }
     return;
   }
 

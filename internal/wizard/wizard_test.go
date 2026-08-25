@@ -913,3 +913,59 @@ func TestProbedButUnconfiguredIsNotARepair(t *testing.T) {
 		t.Error("a configured install was not recognised as repairable")
 	}
 }
+
+// Journey step 9 must begin on its own. A screen that waits for a click the
+// user was never asked for — while its own text says it is working — is how
+// the port step behaved on first contact with a real network.
+func TestClaimingANameStartsThePortStep(t *testing.T) {
+	attempted := false
+	h := newHarness(t, func(o *Options) {
+		o.NewMapper = func(string, string) PortMapper {
+			attempted = true
+			return &fakeMapper{}
+		}
+	})
+
+	ctx := context.Background()
+	mustAll(t,
+		func() error { return h.w.Start(ctx) },
+		func() error { return h.w.SignIn(ctx, "admin", "pw") },
+		func() error { return h.w.SetDynuKey(ctx, testKey) },
+		func() error { return h.w.ClaimName(ctx, "mymedia", "freeddns.org") },
+	)
+
+	if !attempted {
+		t.Fatal("claiming a name did not attempt the port mapping")
+	}
+	// A cooperative router means there is nothing to show, so the flow should
+	// already have moved past the port screen without the user touching it.
+	if got := h.w.Model().Screen; got != ScreenSetup {
+		t.Errorf("screen = %s, want the setup screen to have been reached automatically", got)
+	}
+}
+
+// When the router will not cooperate, the user lands on the port screen with
+// instructions already rendered — never on an empty one.
+func TestPortScreenIsNeverShownEmpty(t *testing.T) {
+	h := newHarness(t, func(o *Options) {
+		o.NewMapper = func(string, string) PortMapper {
+			return &fakeMapper{err: &portmap.UPnPError{Code: 718}}
+		}
+	})
+
+	ctx := context.Background()
+	mustAll(t,
+		func() error { return h.w.Start(ctx) },
+		func() error { return h.w.SignIn(ctx, "admin", "pw") },
+		func() error { return h.w.SetDynuKey(ctx, testKey) },
+		func() error { return h.w.ClaimName(ctx, "mymedia", "freeddns.org") },
+	)
+
+	m := h.w.Model()
+	if m.Screen != ScreenPort {
+		t.Fatalf("screen = %s, want the port screen", m.Screen)
+	}
+	if len(m.Port.Instructions) == 0 || len(m.Port.Values) == 0 {
+		t.Fatal("the port screen was shown with nothing on it")
+	}
+}

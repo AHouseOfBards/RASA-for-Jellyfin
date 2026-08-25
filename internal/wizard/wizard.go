@@ -685,7 +685,14 @@ func (w *Wizard) ClaimName(ctx context.Context, label, parent string) error {
 		m.Result.URL = publicURL(hostname, m.ListenPort)
 		m.Screen = ScreenPort
 	})
-	return nil
+
+	// Journey step 9 starts on its own. SPEC.md §9: every fork happens
+	// invisibly and the user is told the outcome, never asked to begin it —
+	// and a screen that waits for a click it never asked for, while its own
+	// text says it is working, is the worst of both.
+	//
+	// openPort rather than OpenPort: the busy flag is already held.
+	return w.openPort(ctx)
 }
 
 func (w *Wizard) suggest(label, parent string) []string {
