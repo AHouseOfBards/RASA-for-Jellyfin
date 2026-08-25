@@ -138,6 +138,11 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          # A tag with a suffix is a prerelease: v0.1.0-beta is, v0.1.0 is not.
+          # This is not cosmetic. It keeps a beta out of the "latest release"
+          # that anyone browsing the repository lands on, which matters while
+          # the README still lists things nobody has run yet.
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             assets/rasa-*
             assets/SHA256SUMS.txt

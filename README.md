@@ -109,8 +109,11 @@ Being straight about this, because it's a beta:
   else has been run end to end on a real machine, but testing was done on a network with
   no consumer router, where opening a port isn't possible. The code paths exist and fail
   gracefully; they've never succeeded.
-- **The installers have never been built.** This release is the first time.
-- Only Windows has been tested on real hardware. Linux compiles and is covered by tests.
+- **Nobody has run the installers yet.** They build, and you can check the checksum
+  against what's published, but no one has yet double-clicked the `.exe` on a machine
+  that didn't already have RASA on it.
+- Only Windows has been tested on real hardware. Linux compiles and is covered by tests,
+  but the Linux install script has never been run.
 
 If you try it, [open an issue](https://github.com/AHouseOfBards/RASA-for-Jellyfin/issues)
 and say what happened either way. That's the most useful thing you can do right now.

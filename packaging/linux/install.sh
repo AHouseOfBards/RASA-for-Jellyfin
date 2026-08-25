@@ -51,9 +51,18 @@ fi
 if [ -z "$SRC" ]; then
   command -v curl >/dev/null 2>&1 || { echo "curl is required to download a release" >&2; exit 1; }
 
+  # /releases/latest excludes prereleases, and every release so far is one, so
+  # it answers with nothing. Falling back to the full list -- which GitHub
+  # returns newest first -- is what makes this work before there is a stable
+  # release, without pinning the stable path to whatever was published last.
   VERSION="${VERSION:-$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
     | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')}"
-  [ -n "$VERSION" ] || { echo "could not determine the latest version" >&2; exit 1; }
+  if [ -z "$VERSION" ]; then
+    VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases?per_page=1" \
+      | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)
+    [ -z "$VERSION" ] || echo "no stable release yet; installing prerelease ${VERSION}"
+  fi
+  [ -n "$VERSION" ] || { echo "could not determine a version to install" >&2; exit 1; }
 
   TARBALL="rasa-${VERSION}-linux-${ARCH}.tar.gz"
   BASE="https://github.com/${REPO}/releases/download/${VERSION}"
