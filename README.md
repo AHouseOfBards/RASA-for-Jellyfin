@@ -1,160 +1,148 @@
 # RASA for Jellyfin
 
-**Remote Access Setup App** — one download that gives a self-hosted Jellyfin server a secure public address, then gets out of the way.
+Watch your Jellyfin server from anywhere, without setting up a dozen things by hand.
 
-RASA registers a free hostname, obtains a Let's Encrypt certificate, installs a reverse proxy, opens the router port, and writes Jellyfin's own network settings. When it finishes, **you can uninstall RASA and remote access keeps working.**
+RASA is a small setup app. You run it once, answer three questions, and it does the rest:
+it gets you a free web address, sets up a proper security certificate so browsers trust it,
+tells your router to let connections in, and updates Jellyfin's own settings.
 
-> **Status: early development.** The project skeleton is in place; the setup wizard is not implemented yet. See [SPEC.md](SPEC.md) for the full design and [Roadmap](#roadmap) for what is built.
+When it's done you can delete RASA. Your remote access keeps working.
 
----
+> **This is a 0.1 beta.** It has been run end to end on Windows and it works, but it's new.
+> Read [What isn't proven yet](#what-isnt-proven-yet) before you rely on it.
 
-## Why this exists
+## What you get
 
-Setting up remote access for Jellyfin by hand means a dynamic DNS account, a reverse proxy, an ACME client, a router port forward, and four settings inside Jellyfin that fail silently if you get them wrong. RASA does all of it in about seven minutes, and only asks you for three things: your Jellyfin login, a Dynu account, and a name for your server.
+An address like `https://yourname.freeddns.org` that works in a browser and in every
+Jellyfin app, from anywhere.
 
-## How it works
+Doing this by hand normally means signing up for a dynamic DNS service, installing a
+reverse proxy, running an ACME client to get a certificate, forwarding a port on your
+router, and changing four settings inside Jellyfin that fail quietly if you get them
+wrong. RASA does all of that in about ten minutes.
 
-RASA is an **installer, not a background app**. It configures three things that keep running on their own:
+## What you need
 
-| Component | Responsibility | Survives RASA's removal |
-|---|---|---|
-| **Caddy** (installed as a service) | TLS, reverse proxy, and automatic certificate renewal | ✅ |
-| **Scheduled task** | Keeps your address pointed at your changing IP | ✅ |
-| **Jellyfin settings** | Written once over Jellyfin's own API | ✅ |
+- Jellyfin 10.11.5 or newer, already installed and running
+- Windows 10/11, or Linux
+- An email address, to make a free account at [Dynu](https://www.dynu.com/) during setup
+- Administrator access on the computer, once
 
-Certificates are issued using the **DNS-01 challenge**, so port 80 never needs to be open. If port 443 is unavailable, RASA falls back to 8443 automatically.
+macOS isn't supported. Apple requires a paid developer account to distribute apps outside
+their store, and without it macOS blocks the app rather than just warning about it.
 
-If your connection is behind CGNAT, RASA detects it and routes to a mode that still works rather than failing.
+## Installing
 
-## Requirements
+Download the latest release from the
+[Releases page](https://github.com/AHouseOfBards/RASA-for-Jellyfin/releases).
 
-- **Jellyfin 10.11.5 or newer**, already installed and running
-- **Windows 10/11** or **Linux** (macOS is not supported — see [SPEC.md §17](SPEC.md#17-packaging-and-distribution))
-- A free [Dynu](https://www.dynu.com/) account (created during setup)
-- Administrator rights, once, during installation
+**Windows will warn you about this app.** You'll see *"Windows protected your PC"*. That's
+because the app isn't code-signed, which costs money this project doesn't have yet. It
+isn't a sign that anything is wrong, but you only have our word for that. Click
+**More info**, then **Run anyway**. If you'd rather check first, every release publishes a
+SHA-256 checksum you can compare against your download.
 
-## Installation
+On Linux, download the `.tar.gz`, unpack it, and run `sudo ./install.sh`.
 
-Releases are not yet published. When they are, downloads will be on the [Releases](https://github.com/AHouseOfBards/RASA-for-Jellyfin/releases) page.
+## What happens during setup
 
-> ⚠️ **Windows will warn you about this app.** RASA is not code-signed — signing certificates cost money this project does not have. Windows SmartScreen will show *"Windows protected your PC"*; choose **More info → Run anyway**. Verify the SHA-256 checksum published with each release if you want to confirm the download is intact.
+You'll be asked for three things: your Jellyfin admin login, a Dynu account, and a name
+for your server. Everything else is automatic.
+
+1. RASA checks your network and finds your Jellyfin server
+2. You sign in to Jellyfin so RASA can change its settings
+3. You make a free Dynu account and paste in a key it gives you
+4. You pick a name, like `mymedia`
+5. RASA asks your router to open a port. If your router won't, you get exact
+   instructions for your specific router model
+6. RASA sets everything up. **The security certificate can take up to nine minutes** —
+   that step is slow because a certificate authority has to check your address is really
+   yours. The screen keeps counting so you can tell it's still working
+7. You get your address, a QR code, and a text file with everything written down
+
+The best way to check it worked is to open the address on your phone with wi-fi turned
+off. That's the only test that proves it works from outside your home.
+
+## What stays on your computer
+
+RASA itself is disposable, but three things it installs are not:
+
+| What | Why it has to stay |
+| --- | --- |
+| Caddy, as a background service | Handles the secure connection and renews your certificate |
+| A scheduled task | Your home address changes; this keeps your web address pointed at it |
+| Jellyfin's settings | Written once, so Jellyfin knows its new address |
+
+Uninstalling RASA leaves all three alone, on purpose. That's what lets you delete the
+setup app without breaking anything.
+
+## Removing it
+
+To take remote access down properly, run RASA again and choose **Remove remote access**.
+That stops the service, removes the scheduled task and firewall rule, and stops your web
+address pointing at your home.
+
+Your Jellyfin server itself is never touched, and your logs are left in place.
+
+## If something goes wrong
+
+Everything RASA did is written to a text file when it finishes. On Windows that's
+`C:\ProgramData\RASA\remote-access-info.txt`, and on Linux `/var/lib/rasa`. It has your
+address, your port forwarding details, and where the logs are.
+
+Logs live next to it:
+
+| File | What's in it |
+| --- | --- |
+| `rasa.log` | What the setup app did |
+| `caddy.log` | The secure connection and certificate — **read this if a certificate fails** |
+| `sync.log` | Address updates |
+
+You can also run `rasa --diagnostics`, which bundles the logs into a zip with your address
+and any secrets removed, ready to attach to a bug report.
+
+## What isn't proven yet
+
+Being straight about this, because it's a beta:
+
+- **Reaching your server from outside has never been tested successfully.** Everything
+  else has been run end to end on a real machine, but testing was done on a network with
+  no consumer router, where opening a port isn't possible. The code paths exist and fail
+  gracefully; they've never succeeded.
+- **The installers have never been built.** This release is the first time.
+- Only Windows has been tested on real hardware. Linux compiles and is covered by tests.
+
+If you try it, [open an issue](https://github.com/AHouseOfBards/RASA-for-Jellyfin/issues)
+and say what happened either way. That's the most useful thing you can do right now.
 
 ## Building from source
+
+Requires Go 1.26 or newer.
 
 ```sh
 git clone https://github.com/AHouseOfBards/RASA-for-Jellyfin.git
 cd RASA-for-Jellyfin
-
 go build ./...
 go test ./...
-go run ./cmd/rasa -root ./.devdata    # -root avoids needing admin during development
+go run ./cmd/rasa -root ./.devdata
 ```
 
-That opens the wizard in your browser. Add `-no-browser` to print the address
-instead, which is what you want over SSH or in a container.
+That opens the wizard in your browser. `-root` keeps everything in a local folder so you
+don't need administrator rights while developing. Add `-no-browser` to print the address
+instead, which is what you want over SSH.
 
-**Development builds use Let's Encrypt staging.** Production allows five failed
-validations per hostname per hour and 50 certificates per registered domain per
-week, and a day of debugging against it leaves you locked out of the thing you
-are debugging. A release build opts in with `-ldflags "-X main.staging=0"`; a
-single run can opt in with `-production-certificates`.
+Development builds use Let's Encrypt's **staging** service. Production allows only five
+failed attempts per address per hour, and a day of debugging against it locks you out of
+the thing you're debugging. Release builds opt in with `-ldflags "-X main.staging=0"`.
 
-Requires Go 1.26 or newer.
+There's one third-party dependency, `rsc.io/qr`, pinned, for the QR code. CI fails the
+build if anything else appears.
 
-One third-party dependency: `rsc.io/qr`, pinned, with no transitive
-dependencies of its own. CI enforces the allowlist — anything else fails the
-build. The QR encoder was originally written from scratch to avoid it; that
-version round-tripped through its own decoder but disagreed with an established
-implementation on the data codewords, and being unable to say which was right
-is the whole argument for using the one that phones have already read.
-
-### Layout
-
-```
-cmd/rasa/            setup app (disposable)
-cmd/rasa-sync/       address sync helper (stays installed)
-internal/logging/    structured logging with tested secret redaction
-internal/rasaerr/    typed errors: user-facing copy separated from technical detail
-internal/state/      resumable setup state machine and its persistence
-internal/secrets/    credential storage (DPAPI on Windows, 0600 file on Linux)
-internal/paths/      where logs, state and credentials live
-internal/probe/      pre-flight: Jellyfin, public address, router/UPnP, ports
-internal/mode/       chooses public / IPv6 / mesh access from probe results
-internal/dynu/       Dynu v2 API client
-internal/portmap/    UPnP IGD port mapping with permanent-lease verification
-internal/routerguide/ per-router forwarding instructions from routers.json
-internal/reach/      external reachability checks (reachable / unreachable / inconclusive)
-internal/dnswait/    waits for records on authoritative nameservers before ACME
-internal/jellyfin/   configures Jellyfin's network settings over its own API
-internal/domains/    the parent domains on offer, and hostname validation
-internal/caddy/      generates the proxy configuration and installs it as a service
-internal/service/    registers the OS service and scheduled task
-internal/wizard/     the setup flow: sequencing, branching, and the model the UI renders
-internal/ui/         serves that model as a local web application
-internal/ddns/       keeps the published address current
-internal/qr/         renders the finished address for a phone camera
-internal/recovery/   recovery file and diagnostic bundle
-```
-
-### Live API tests
-
-`go test ./...` is hermetic and needs no network. The Dynu package also has
-opt-in read-only tests against the real API, which exist because fixtures can
-only prove RASA parses what it was told to expect — they cannot notice Dynu
-changing a field name:
-
-```sh
-# put your key in .devdata/dynu-key.txt (gitignored), then:
-RASA_LIVE_DYNU=1 go test ./internal/dynu/ -run Live -v
-```
-
-### Where RASA puts things
-
-These locations deliberately survive uninstallation, because that is when logs matter most.
-
-| | Windows | Linux |
-|---|---|---|
-| State and recovery file | `C:\ProgramData\RASA` | `/var/lib/rasa` |
-| Logs | `C:\ProgramData\RASA\logs` | `/var/log/rasa` |
-| Credentials | `C:\ProgramData\RASA\secrets` | `/etc/rasa` |
-
-## Roadmap
-
-Task numbers refer to [SPEC.md §18](SPEC.md#18-implementation-tasks).
-
-- [x] **1** — Project skeleton, state store, structured logging with tested redaction
-- [x] **1b** — Error catalogue with user-facing copy
-- [x] **2** — Dynu v2 API client
-- [x] **3** — Probe suite (Jellyfin discovery, public IP, CGNAT detection)
-- [x] **4** — Mode router
-- [x] **5** — Port mapper and router instruction guide
-- [x] **6** — Caddy service installer
-- [x] **7** — DNS propagation waiter
-- [x] **8** — Jellyfin configuration client
-- [x] **9** — Wizard UI
-- [~] **10** — Packaging inputs written; installers not built
-- [x] **11** — Scheduled task installer
-- [x] **12** — Repair detection, credential reuse, and deliberate removal of remote access
-- [x] **13** — Diagnostic bundle and recovery file
-
-## Contributing
-
-Router port-forwarding instructions live in [`internal/routerguide/routers.json`](internal/routerguide/routers.json) rather than in code, so **adding your router is a pull request, not a release**. The same applies to the list of usable Dynu parent domains.
-
-Two rules worth knowing before opening a PR:
-
-1. **Secrets must never reach a log line.** `internal/logging` redacts them and has tests that enforce it. Assume every diagnostic bundle gets pasted into a public issue — because it will.
-2. **Users never see raw errors.** Add new failures to `internal/rasaerr`'s catalogue with plain-language copy. There are tests that reject jargon, status codes, and dead ends with no recovery action.
-
-## Security
-
-RASA puts a login form on the public internet, so it takes some responsibility for that: it rate-limits Jellyfin's authentication endpoint, refuses to expose a server with a weak admin password, and never enables Jellyfin's own UPnP.
-
-If you find a security issue, please open an issue marked as such rather than a pull request.
+[SPEC.md](SPEC.md) is the full design document, including why each decision was made.
 
 ## Licence
 
 [GNU General Public License v3.0](LICENSE).
 
-The bundled Caddy binary is Apache-2.0 and `rsc.io/qr` is BSD-3-Clause; both
-are compatible with distribution under GPL-3.0.
+The bundled Caddy binary is Apache-2.0 and `rsc.io/qr` is BSD-3-Clause; both are
+compatible with distribution under GPL-3.0.
