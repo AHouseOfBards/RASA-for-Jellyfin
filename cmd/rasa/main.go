@@ -70,6 +70,20 @@ func main() {
 		return
 	}
 
+	// Setup needs administrator rights end to end, so ask for them before any
+	// work rather than partway through it. A -root run is development and
+	// needs nothing, which is the point of the flag.
+	if *root == "" {
+		relaunched, err := ensureElevated()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "rasa:", err)
+			os.Exit(1)
+		}
+		if relaunched {
+			return
+		}
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 

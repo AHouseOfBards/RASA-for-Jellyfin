@@ -48,9 +48,14 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # inputs.version is tested first, because shell default-expansion cannot
+      # be the test here: on a workflow_dispatch GITHUB_REF_NAME is set, to the
+      # branch name, so ${GITHUB_REF_NAME:-...} never fell through to the
+      # input. Every manual build came out labelled "main" and was compiled
+      # with -X main.version=main.
       - name: Resolve version
         id: version
-        run: echo "value=${GITHUB_REF_NAME:-${{ inputs.version }}}" >> "$GITHUB_OUTPUT"
+        run: echo "value=${{ inputs.version || github.ref_name }}" >> "$GITHUB_OUTPUT"
 
       - name: Install xcaddy
         run: go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest

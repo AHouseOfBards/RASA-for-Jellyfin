@@ -12,6 +12,10 @@
   !define VERSION "0.0.0-dev"
 !endif
 
+; Caddy is most of the download and compresses well. The default zlib produced
+; a 21.8 MB installer, for a home user on a home connection.
+SetCompressor /SOLID lzma
+
 Name "${APPNAME}"
 OutFile "rasa-setup-windows-x64.exe"
 InstallDir "$PROGRAMFILES64\RASA"
