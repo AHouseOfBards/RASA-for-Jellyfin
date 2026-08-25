@@ -24,13 +24,21 @@ const DYNU_API_KEYS = "https://www.dynu.com/en-US/ControlPanel/APICredentials";
  * count has to come from one place or the promise quietly stops being true.
  * Screens outside the run - welcome, blocked, done, removing, removed - have
  * no position in it and hide the rail. */
+/* One capitalised word each, so six of them read as a set at a glance rather
+ * than as a sentence someone got bored halfway through.
+ *
+ * They also have to mean something to a reader who has not reached them yet,
+ * which rules out the metaphor the port screen uses in its own heading: "the
+ * door" lands once you are on it and says nothing three steps early. And
+ * naming the address step after the user was simply wrong -- it is the
+ * server's address being chosen, not their name. */
 const JOURNEY = [
-  { screen: "checking", label: "Checking" },
+  { screen: "checking", label: "Checks" },
   { screen: "jellyfin", label: "Jellyfin" },
-  { screen: "dynu", label: "Address account" },
-  { screen: "name", label: "Your name" },
-  { screen: "port", label: "The door" },
-  { screen: "setup", label: "Setting up" },
+  { screen: "dynu", label: "Account" },
+  { screen: "name", label: "Address" },
+  { screen: "port", label: "Router" },
+  { screen: "setup", label: "Setup" },
 ];
 
 /* Which screens are waiting for a person, and what the tab should say.
@@ -44,9 +52,9 @@ const TAB_TITLE = {
   checking: { text: "Checking your network", waiting: false },
   blocked: { text: "Needs your attention", waiting: true },
   jellyfin: { text: "Sign in to Jellyfin", waiting: true },
-  dynu: { text: "Your address account", waiting: true },
-  name: { text: "Name your server", waiting: true },
-  port: { text: "Opening the door", waiting: true },
+  dynu: { text: "Your Dynu account", waiting: true },
+  name: { text: "Choose your address", waiting: true },
+  port: { text: "Your router", waiting: true },
   setup: { text: "Setting everything up", waiting: false },
   done: { text: "Setup finished", waiting: true },
   removing: { text: "Removing remote access", waiting: false },
