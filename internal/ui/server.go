@@ -261,11 +261,14 @@ func (s *Server) handleIndex(wr http.ResponseWriter, r *http.Request) {
 	// it. There are no dependencies to compromise, which is rather the point.
 	wr.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'none'; base-uri 'none'")
 	wr.Header().Set("Referrer-Policy", "no-referrer")
-	wr.Write([]byte(body))
 
-	// Set only after a successful serve with a valid token, so a stray probe
-	// on the port does not count as "the user is looking at the wizard".
+	// Before the write, not after: a client can finish reading the response
+	// and act on it while this handler is still running, so recording the
+	// visit afterwards is a race the client wins about as often as not.
+	// Still after the token check, so a stray probe on the port does not
+	// count as "the user is looking at the wizard".
 	s.visited.Store(true)
+	wr.Write([]byte(body))
 }
 
 func (s *Server) handleState(wr http.ResponseWriter, r *http.Request) {
