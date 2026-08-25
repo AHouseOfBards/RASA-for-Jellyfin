@@ -163,24 +163,28 @@ jobs:
           files: |
             assets/rasa-*
             assets/SHA256SUMS.txt
+          # Written for whoever lands on the download page, so it says how to
+          # install it and what to expect afterwards, and nothing else. What
+          # changed goes in the tag message above; how it works goes in the
+          # README.
           body: |
             ## Installing
 
-            **Windows** — download the `.exe`, run it, accept one administrator
-            prompt. Windows will warn that the publisher is unknown: RASA is
-            unsigned, and there is no code-signing budget behind it. Choose
-            **More info → Run anyway**, or verify the checksum below first.
+            **Windows.** Download the `.exe` and run it. Accept the
+            administrator prompt. Windows will warn you that the publisher is
+            unknown, because RASA is not code signed. Click **More info**, then
+            **Run anyway**.
 
-            **Linux** — download the `.tar.gz`, extract it, and run
+            **Linux.** Download the `.tar.gz`, unpack it, and run
             `sudo ./install.sh`.
 
-            Verify what you downloaded against `SHA256SUMS.txt`. With no
-            signature, that hash is the only integrity signal there is.
+            If you want to check your download first, compare it against
+            `SHA256SUMS.txt` below.
 
-            ## What stays behind
+            ## Afterwards
 
-            RASA is a setup app. Once it finishes you can uninstall it and
-            remote access keeps working — the proxy and the address updater are
-            installed separately and are not removed with it. To take remote
-            access down deliberately, run RASA again and choose
-            **Remove remote access**.
+            RASA is only the setup app. Once it has finished you can uninstall
+            it and your remote access keeps working.
+
+            To turn remote access off, run RASA again and choose **Remove
+            remote access** before uninstalling.
