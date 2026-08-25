@@ -154,17 +154,26 @@ func run(ctx context.Context, o options) error {
 		srv.Close(shutdown)
 	}()
 
+	// The address is printed before any attempt to open a browser, and always.
+	//
+	// Starting a browser is a fire-and-forget handoff to the OS: the launcher
+	// returns success as soon as it has been started, which says nothing about
+	// whether a window ever appeared. Running elevated is exactly where that
+	// goes wrong, and a user left looking at an empty console with no address
+	// has no way forward at all. Printing first costs one line and removes the
+	// dead end.
+	fmt.Println()
+	fmt.Println("  Setup is running at:")
+	fmt.Println("   ", srv.URL())
+	fmt.Println()
+	fmt.Println("  If a browser window did not open, copy that address into one.")
+	fmt.Println("  Leave this window open until setup finishes.")
+	fmt.Println()
+
 	if o.openWindow {
 		if err := ui.Open(srv.URL()); err != nil {
-			// Not fatal: the address is printed either way, and a headless
-			// machine or a locked-down desktop is a normal place to run this.
 			log.Warn("could not open a browser", slog.Any("err", err))
-			o.openWindow = false
 		}
-	}
-	if !o.openWindow {
-		fmt.Println("Open this address to continue setup:")
-		fmt.Println(" ", srv.URL())
 	}
 
 	select {

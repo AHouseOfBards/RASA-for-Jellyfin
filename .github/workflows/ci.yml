@@ -56,6 +56,35 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: go test -race ./...
 
+  assets:
+    name: Wizard assets parse
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The wizard's script is embedded in the binary and served to a browser,
+      # so nothing in the Go build or test suite ever parses it. A single
+      # malformed string literal takes the whole file out, and the symptom is a
+      # blank page with no error reported anywhere - which is exactly how it
+      # was found, during a live run.
+      - name: Syntax-check the embedded JavaScript
+        run: node --check internal/ui/assets/app.js
+
+      # Catches the other half of the same class: an element the script talks
+      # to that no longer exists in the markup.
+      - name: Check every referenced element id exists
+        run: |
+          missing=""
+          ids=$(grep -o 'getElementById("[a-z0-9-]*")' internal/ui/assets/app.js                 | sed 's/.*("\(.*\)")//' | sort -u)
+          for id in $ids; do
+            grep -q "id=\"$id\"" internal/ui/assets/index.html || missing="$missing $id"
+          done
+          if [ -n "$missing" ]; then
+            echo "app.js references ids absent from index.html:$missing"
+            exit 1
+          fi
+          echo "ok: every referenced id exists"
+
   cross-build:
     name: Cross-build
     runs-on: ubuntu-latest

@@ -133,7 +133,12 @@ func New(opts Options) (*Wizard, error) {
 		opts.Log.Warn("existing state could not be read; starting fresh", slog.Any("err", err))
 		st = state.NewState(opts.Log.RunID())
 	default:
-		repair = st.Phase != state.New
+		// A hostname is the thing that makes a run repairable. Phase alone is
+		// too loose: a user who quit during the probe has a state file at
+		// PROBED and nothing configured, and telling them "you've set this up
+		// before" — then offering to remove it — describes a machine that does
+		// not exist.
+		repair = st.Hostname != ""
 	}
 	w.st = st
 

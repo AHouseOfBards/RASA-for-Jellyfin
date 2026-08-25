@@ -437,9 +437,7 @@ function wire() {
         // The one destructive thing in the product, so it asks. Uninstalling
         // RASA deliberately leaves remote access running; this is the button
         // that does not.
-        if (confirm("Remove remote access?
-
-Your server will stop being reachable from outside your home network. Jellyfin itself, and your logs, are left alone.")) {
+        if (confirm("Remove remote access?\n\nYour server will stop being reachable from outside your home network. Jellyfin itself, and your logs, are left alone.")) {
           post("/api/remove");
         }
         break;

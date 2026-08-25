@@ -871,3 +871,45 @@ func readFile(p string) (string, error) {
 func recoveryStat(dir string) (os.FileInfo, error) {
 	return os.Stat(paths.UnderRoot(dir).RecoveryFile())
 }
+
+// A state file left at PROBED means setup was started and abandoned before
+// anything was configured. Calling that a prior install tells the user their
+// machine is in a state it is not, and offers to remove something that was
+// never created.
+func TestProbedButUnconfiguredIsNotARepair(t *testing.T) {
+	dir := t.TempDir()
+	layout := paths.UnderRoot(dir)
+	if err := layout.EnsureDirs(); err != nil {
+		t.Fatal(err)
+	}
+	store := state.NewStore(layout.StateFile())
+
+	abandoned := state.NewState("earlier-run")
+	abandoned.Reset(state.Probed)
+	if err := store.Save(abandoned); err != nil {
+		t.Fatal(err)
+	}
+
+	h := newHarness(t, func(o *Options) {
+		o.Layout = layout
+		o.Store = store
+	})
+	if h.w.Model().Repair {
+		t.Error("a probe-only state file was reported as a previous install")
+	}
+
+	// Whereas a claimed hostname is a real thing to repair.
+	claimed := state.NewState("earlier-run")
+	claimed.Reset(state.Running)
+	claimed.Hostname = "mymedia.freeddns.org"
+	if err := store.Save(claimed); err != nil {
+		t.Fatal(err)
+	}
+	h2 := newHarness(t, func(o *Options) {
+		o.Layout = layout
+		o.Store = store
+	})
+	if !h2.w.Model().Repair {
+		t.Error("a configured install was not recognised as repairable")
+	}
+}
