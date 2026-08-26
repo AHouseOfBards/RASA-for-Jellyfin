@@ -12,12 +12,16 @@ import (
 )
 
 // ProbeHost describes the machine RASA is running on.
-func ProbeHost(ctx context.Context, log *logging.Logger) Host {
+//
+// gateway is the router's address on the local network, when it is known. It
+// is what makes the answer right on a machine with a VPN up: see
+// addressFacing.
+func ProbeHost(ctx context.Context, log *logging.Logger, gateway netip.Addr) Host {
 	if log == nil {
 		log = logging.Discard()
 	}
 	h := Host{
-		LANAddress:  localAddress(),
+		LANAddress:  addressFacing(gateway),
 		InContainer: inContainer(),
 	}
 	// Unknown provenance is treated as DHCP on purpose. Advising a reservation
@@ -40,6 +44,53 @@ func ProbeHost(ctx context.Context, log *logging.Logger) Host {
 // address would be used to reach the internet. That is more reliable than
 // enumerating interfaces, which cannot tell which of several is the default
 // route on a machine with a VPN, a VM bridge, or Docker's virtual adapters.
+// addressFacing returns this machine's address on the network the router is
+// on, which is the address a port forward has to point at.
+//
+// The router's address is the thing that makes this correct. Asking the
+// routing table which source address reaches the internet -- what this used to
+// do, and what localAddress still does as a fallback -- returns the VPN's
+// address whenever a VPN is up, because that is the honest answer to the
+// question being asked. It is the wrong question. A port forward is configured
+// on the router, points at an address on the router's own network, and a
+// tunnel address is not one; the forward is then silently unreachable.
+//
+// Reported from a real run: setup done with a VPN connected produced a
+// forwarding address on the tunnel, and the instructions could not work.
+func addressFacing(gateway netip.Addr) netip.Addr {
+	if !gateway.IsValid() || !gateway.Is4() {
+		return localAddress()
+	}
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return localAddress()
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipn, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			// Same subnet as the router, which a tunnel interface is not.
+			if ipn.Contains(net.IP(gateway.AsSlice())) {
+				if addr, ok := netip.AddrFromSlice(ipn.IP); ok && addr.Unmap().Is4() {
+					return addr.Unmap()
+				}
+			}
+		}
+	}
+	// The router is known but nothing shares its subnet, which happens behind
+	// a second layer of NAT. The routing table's answer is the best left.
+	return localAddress()
+}
+
 func localAddress() netip.Addr {
 	c, err := net.Dial("udp4", "192.0.2.1:9") // TEST-NET-1, never routed
 	if err != nil {

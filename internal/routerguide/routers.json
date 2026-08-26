@@ -100,6 +100,17 @@
     "reservationPath": "Network Center → DHCP Server → DHCP Clients → Add to reservation"
   },
 
+  "verizon": {
+    "name": "Verizon (Fios)",
+    "match": {
+      "vendor": ["Verizon", "Actiontec", "Greenwave"],
+      "banner": ["Verizon", "Fios", "Actiontec"]
+    },
+    "path": "switch from Simple to Advanced at the top right, then Security → Firewall → Port Forwarding",
+    "note": "The Advanced toggle is the step people miss: in Simple view there is no Port Forwarding entry at all. The rule also asks for a Schedule, which must be set to Always, and for a Source IP Address, which should be left as Any.",
+    "reservationPath": "Advanced → Network Settings → IP Address Distribution, by opening the connection and setting this computer to Static"
+  },
+
   "eero": {
     "name": "eero",
     "match": {

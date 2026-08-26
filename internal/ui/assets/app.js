@@ -312,6 +312,8 @@ function renderPort() {
   const guide = document.getElementById("port-guide");
   const lede = document.getElementById("port-lede");
 
+  document.getElementById("port-upnp").hidden = !p.automatic_off;
+
   if (!p.instructions || p.instructions.length === 0) {
     guide.hidden = true;
     // Only claim to be working when something actually is. This screen used to

@@ -72,12 +72,14 @@ func (p *Prober) Run(ctx context.Context) Result {
 	go func() { defer wg.Done(); res.Internet = p.Internet.Probe(ctx) }()
 	go func() { defer wg.Done(); res.Jellyfin = p.Jellyfin.Probe(ctx) }()
 	go func() { defer wg.Done(); res.Router = p.Router.Probe(ctx) }()
-	go func() {
-		defer wg.Done()
-		res.Ports = ProbePorts(ctx, p.Log, ports...)
-		res.Host = ProbeHost(ctx, p.Log)
-	}()
+	go func() { defer wg.Done(); res.Ports = ProbePorts(ctx, p.Log, ports...) }()
 	wg.Wait()
+
+	// After the others, not alongside them: this machine's LAN address is only
+	// answerable once the router's address is known, because "the address a
+	// port forward should point at" means "the address on the router's
+	// network" and nothing else can distinguish that from a VPN's.
+	res.Host = ProbeHost(ctx, p.Log, res.Router.Gateway)
 
 	p.Log.Info("pre-flight complete",
 		slog.Duration("duration", time.Since(start)),

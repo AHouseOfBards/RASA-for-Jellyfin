@@ -149,6 +149,16 @@ type PortView struct {
 	// ReservationNote warns that this machine's address is leased and will
 	// eventually move, breaking a static forward.
 	ReservationNote string `json:"reservation_note,omitempty"`
+
+	// AutomaticOff is true when the router did not offer automatic port
+	// mapping, which is the difference between RASA doing this step by itself
+	// and the user doing it by hand on a router admin page.
+	//
+	// It is worth its own field because the user cannot otherwise tell.
+	// Reported from a real run: UPnP was switched off, the wizard fell
+	// straight through to manual instructions, and nothing said that a setting
+	// existed which would have skipped the whole step.
+	AutomaticOff bool `json:"automatic_off,omitempty"`
 }
 
 // GuideStep is one instruction line.

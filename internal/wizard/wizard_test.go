@@ -18,6 +18,7 @@ import (
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/dynu"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/jellyfin"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/logging"
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/mode"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/paths"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/portmap"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/probe"
@@ -1211,5 +1212,73 @@ func TestBackClearsTheErrorItLeaves(t *testing.T) {
 	}
 	if h.w.Model().Err != nil {
 		t.Error("the error followed the user back to a screen it did not come from")
+	}
+}
+
+// "Test again" has to re-probe. Reported from a real run: setup was started
+// with a VPN connected, so the address offered for port forwarding was the
+// tunnel's; disconnecting the VPN and pressing Test again kept using the stale
+// one, and nothing short of starting over could correct it.
+func TestRetryingThePortStepPicksUpNetworkChanges(t *testing.T) {
+	h := newHarness(t, nil)
+
+	// The probe taken at the checking step, on a machine behind a VPN.
+	h.seed.Host.LANAddress = netip.MustParseAddr("10.8.0.6")
+	h.seed.Router.PortMappingAvailable = false
+	h.seed.Router.ControlURL = ""
+	h.w.mu.Lock()
+	h.w.probed = h.seed
+	h.w.decision = mode.Decision{NeedsManualForward: true, ListenPort: 443}
+	h.w.mu.Unlock()
+
+	// The user disconnects the VPN and turns UPnP on, then presses Test again.
+	h.seed.Host.LANAddress = netip.MustParseAddr("192.168.1.50")
+	h.seed.Router.PortMappingAvailable = true
+
+	if err := h.w.OpenPort(context.Background()); err != nil {
+		t.Fatalf("OpenPort: %v", err)
+	}
+
+	h.w.mu.Lock()
+	got := h.w.probed.Host.LANAddress
+	upnp := h.w.probed.Router.PortMappingAvailable
+	h.w.mu.Unlock()
+
+	if got.String() != "192.168.1.50" {
+		t.Errorf("forwarding address is %s, want 192.168.1.50: the retry reused the stale probe", got)
+	}
+	if !upnp {
+		t.Error("the retry did not notice that automatic port mapping had been turned on")
+	}
+}
+
+// A user whose router has UPnP switched off cannot tell that the setting
+// exists, nor that turning it on would skip the manual step entirely.
+func TestManualForwardSaysWhenAutomaticIsAvailableButOff(t *testing.T) {
+	h := newHarness(t, nil)
+	h.seed.Router.PortMappingAvailable = false
+	h.seed.Router.ControlURL = ""
+	h.seed.Host.LANAddress = netip.MustParseAddr("192.168.1.50")
+	h.w.mu.Lock()
+	h.w.probed = h.seed
+	h.w.decision = mode.Decision{NeedsManualForward: true, ListenPort: 443}
+	h.w.mu.Unlock()
+
+	if err := h.w.OpenPort(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !h.w.Model().Port.AutomaticOff {
+		t.Error("the router never offered automatic mapping and the user was not told so")
+	}
+
+	// A router that offered it and failed anyway is a different problem, and
+	// telling that user to enable a setting they already have on wastes their
+	// time.
+	h.seed.Router.PortMappingAvailable = true
+	if err := h.w.OpenPort(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.w.Model().Port.AutomaticOff {
+		t.Error("told the user to turn on a setting their router already reports as on")
 	}
 }

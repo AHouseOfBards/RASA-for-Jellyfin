@@ -866,7 +866,52 @@ func (w *Wizard) OpenPort(ctx context.Context) error {
 		return err
 	}
 	defer w.end()
+
+	// Re-probe the network first, because this is the retry.
+	//
+	// "Test again" used to re-run the mapping against the probe taken minutes
+	// earlier at the checking step, so nothing the user changed in between
+	// could ever be picked up. Reported from a real run: setup was started
+	// with a VPN connected, which made the forwarding address a tunnel
+	// address; disconnecting the VPN and pressing Test again kept using the
+	// stale one, and there was no way to correct it short of starting over.
+	//
+	// Turning UPnP on in the router's settings is the same shape of problem,
+	// and it is the single most likely thing for a user to have just changed
+	// when they press this button.
+	w.reprobe(ctx)
+
 	return w.openPort(ctx)
+}
+
+// reprobe refreshes the network picture, keeping everything already decided.
+//
+// Best-effort: a probe that comes back worse than the one held must not lose
+// a working Jellyfin connection or an address already claimed, so only the
+// network-shaped parts are replaced.
+func (w *Wizard) reprobe(ctx context.Context) {
+	if w.opts.Probe == nil {
+		return
+	}
+	fresh := w.opts.Probe(ctx)
+
+	w.mu.Lock()
+	before := w.probed.Host.LANAddress
+	w.probed.Router = fresh.Router
+	w.probed.Host = fresh.Host
+	w.probed.Ports = fresh.Ports
+	w.probed.Internet = fresh.Internet
+	after := w.probed.Host.LANAddress
+	w.mu.Unlock()
+
+	log := w.log.WithPhase("portmap")
+	if before != after {
+		log.Info("this computer's address on the network changed since the last check",
+			slog.String("was", before.String()), slog.String("now", after.String()))
+	}
+	if fresh.Router.PortMappingAvailable {
+		log.Debug("router reports automatic port mapping is available")
+	}
 }
 
 func (w *Wizard) openPort(ctx context.Context) error {
@@ -968,6 +1013,11 @@ func (w *Wizard) showGuide(res probe.Result, d mode.Decision, mapped *state.Port
 	view := PortView{
 		Needed:     true,
 		RouterName: ins.RouterName,
+		// Only when the router never offered it. A router that offered it and
+		// then refused the mapping is a different problem, and telling that
+		// user to go and enable a setting they already have on wastes their
+		// time on the screen where they have least patience for it.
+		AutomaticOff: mapped == nil && !res.Router.PortMappingAvailable,
 	}
 	if mapped != nil {
 		view.Open = true

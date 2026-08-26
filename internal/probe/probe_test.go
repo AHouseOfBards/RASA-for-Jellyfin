@@ -404,7 +404,7 @@ func TestHasV6RejectsLinkLocal(t *testing.T) {
 // ---------- host ----------
 
 func TestProbeHostReturnsUsableShape(t *testing.T) {
-	h := ProbeHost(context.Background(), logging.Discard())
+	h := ProbeHost(context.Background(), logging.Discard(), netip.Addr{})
 	// LANAddress may legitimately be invalid in an isolated CI network, but if
 	// it is valid it must be a private IPv4 address.
 	if h.LANAddress.IsValid() {

@@ -180,6 +180,17 @@
     <section class="screen" data-screen="port">
       <h1 id="port-title">Opening the door</h1>
       <p class="lede" id="port-lede"></p>
+      <!-- Shown when the router never offered automatic port mapping. Without
+           it the user has no way to know the feature exists, that their router
+           has it switched off, or that turning it on would skip this screen
+           entirely. -->
+      <div class="notice" id="port-upnp" hidden>
+        <strong>Your router can probably do this for you.</strong>
+        Most routers have a setting called <strong>UPnP</strong>, and yours has
+        it switched off. If you turn it on and press Test again, RASA can open
+        the port itself and you can skip the steps below. It is usually under
+        the router's advanced or network settings.
+      </div>
       <div id="port-guide" hidden>
         <h2 id="port-router"></h2>
         <ol class="numbered" id="port-steps"></ol>
