@@ -1282,3 +1282,55 @@ func TestManualForwardSaysWhenAutomaticIsAvailableButOff(t *testing.T) {
 		t.Error("told the user to turn on a setting their router already reports as on")
 	}
 }
+
+// The local port probe binds a socket on this machine, so a port that another
+// device on the network already owns looks completely free. Only the router
+// knows, and a UPnP conflict is it saying so. Falling through to manual
+// instructions for the port that was just refused helps nobody.
+func TestUPnPConflictTakesTheFallbackPort(t *testing.T) {
+	var asked []int
+	h := newHarness(t, func(o *Options) {
+		o.NewMapper = func(string, string) PortMapper {
+			return &conflictingMapper{taken: mode.PortPreferred, asked: &asked}
+		}
+	})
+	h.w.mu.Lock()
+	h.w.probed = h.seed
+	h.w.decision = mode.Decision{NeedsPortMapping: true, ListenPort: mode.PortPreferred}
+	h.w.mu.Unlock()
+
+	if err := h.w.OpenPort(context.Background()); err != nil {
+		t.Fatalf("OpenPort: %v", err)
+	}
+
+	if len(asked) != 2 || asked[0] != mode.PortPreferred || asked[1] != mode.PortFallback {
+		t.Fatalf("ports tried = %v, want [%d %d]", asked, mode.PortPreferred, mode.PortFallback)
+	}
+	if got := h.w.Model().Port.External; got != mode.PortFallback {
+		t.Errorf("external port = %d, want the fallback %d", got, mode.PortFallback)
+	}
+	h.w.mu.Lock()
+	listen := h.w.decision.ListenPort
+	h.w.mu.Unlock()
+	if listen != mode.PortFallback {
+		t.Errorf("decision still says port %d; the address would name a port nothing is forwarding", listen)
+	}
+}
+
+// A mapper whose router already forwards one port to a different device.
+type conflictingMapper struct {
+	taken int
+	asked *[]int
+}
+
+func (m *conflictingMapper) Add(ctx context.Context, r portmap.Request) (*portmap.Result, error) {
+	*m.asked = append(*m.asked, r.ExternalPort)
+	if r.ExternalPort == m.taken {
+		return nil, &portmap.UPnPError{Code: 718} // ConflictInMappingEntry
+	}
+	return &portmap.Result{
+		Mapping:            portmap.Mapping{ExternalPort: r.ExternalPort, InternalPort: r.InternalPort},
+		PermanentRequested: true,
+		VerifiedByReadback: true,
+	}, nil
+}

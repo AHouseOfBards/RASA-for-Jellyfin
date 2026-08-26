@@ -932,15 +932,45 @@ func (w *Wizard) openPort(ctx context.Context) error {
 	var mapped *state.PortMapping
 
 	if d.NeedsPortMapping && res.Router.ControlURL != "" && res.Host.LANAddress.IsValid() {
-		out, err := w.opts.NewMapper(res.Router.ControlURL, res.Router.ServiceType).Add(ctx, portmap.Request{
+		mapper := w.opts.NewMapper(res.Router.ControlURL, res.Router.ServiceType)
+		out, err := mapper.Add(ctx, portmap.Request{
 			ExternalPort:   d.ListenPort,
 			InternalPort:   d.ListenPort,
 			InternalClient: res.Host.LANAddress,
 			Protocol:       portmap.TCP,
 		})
+
+		// A conflict means the router is already forwarding that port to
+		// something else, which the local port probe cannot see: it binds a
+		// socket on this machine, so a port another device on the network
+		// already owns looks completely free.
+		//
+		// Only the router knows, and it has just said so. Taking the fallback
+		// port at that point costs one more request and is the difference
+		// between finishing and handing the user manual instructions for the
+		// very port that was refused.
+		var ue *portmap.UPnPError
+		if err != nil && errors.As(err, &ue) && ue.IsConflict() && d.ListenPort != mode.PortFallback {
+			log.Info("that port is already forwarded to another device; trying the alternative",
+				slog.Int("was", d.ListenPort), slog.Int("now", mode.PortFallback))
+			alt, altErr := mapper.Add(ctx, portmap.Request{
+				ExternalPort:   mode.PortFallback,
+				InternalPort:   mode.PortFallback,
+				InternalClient: res.Host.LANAddress,
+				Protocol:       portmap.TCP,
+			})
+			if altErr == nil {
+				out, err = alt, nil
+				d.ListenPort = mode.PortFallback
+				w.mu.Lock()
+				w.decision.ListenPort = mode.PortFallback
+				w.mu.Unlock()
+				log.OK("Used the alternative port, because your first choice was already taken.")
+			}
+		}
+
 		switch {
 		case err != nil:
-			var ue *portmap.UPnPError
 			if errors.As(err, &ue) && ue.IsConflict() {
 				log.Warned("Your router is already sending that port to a different device.")
 			} else {
