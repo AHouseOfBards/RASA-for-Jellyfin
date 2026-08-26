@@ -253,7 +253,7 @@ func Build(e Entry, v Values) Instructions {
 	}
 
 	ins.Fields = []Field{
-		{Label: "Service name", Value: ServiceLabel, Hint: "any name — this is just so you recognise the entry later"},
+		{Label: "Service name", Value: ServiceLabel, Hint: "any name, this is just so you recognise the entry later"},
 		{Label: "External port", Value: fmt.Sprint(v.Port)},
 		{Label: "Internal port", Value: fmt.Sprint(v.Port), Hint: "the same as the external port"},
 		{Label: "Protocol", Value: "TCP"},

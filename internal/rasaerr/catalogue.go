@@ -51,10 +51,10 @@ func ACMERateLimited(cause error) *Error {
 	return &Error{
 		Code:    CodeACMERateLimited,
 		Message: "Let's Encrypt is briefly limiting new certificates for this address.",
-		Why:     "This usually means setup was retried a few times. Nothing is broken — the limit clears on its own in about an hour.",
+		Why:     "This usually means setup was retried a few times. Nothing is broken. The limit clears on its own in about an hour.",
 		Actions: []Action{
 			{ID: "retry", Label: "Try again later", Kind: ActionRetry},
-			{ID: "rename", Label: "Use a different name", Kind: ActionAlternate},
+			{ID: "rename", Label: "Choose a different name", Kind: ActionAlternate},
 		},
 		Detail:  "ACME issuance refused by rate limit",
 		wrapped: cause,
@@ -70,7 +70,7 @@ func DNSNotVisible(hostname string, waited fmt.Stringer, cause error) *Error {
 		Why:     "This usually takes one to two minutes after the address is created.",
 		Actions: []Action{
 			{ID: "wait", Label: "Keep waiting", Kind: ActionRetry},
-			{ID: "rename", Label: "Pick a different name", Kind: ActionAlternate},
+			{ID: "rename", Label: "Choose a different name", Kind: ActionAlternate},
 		},
 		Detail:  fmt.Sprintf("authoritative NS did not return record for %s after %s", hostname, waited),
 		wrapped: cause,
@@ -99,7 +99,7 @@ func JellyfinAuthRejected(localURL string, cause error) *Error {
 	return &Error{
 		Code:    CodeJellyfinAuth,
 		Message: "That username or password didn't work.",
-		Why:     fmt.Sprintf("This is your Jellyfin login — the same one you use at %s, not your Dynu account.", localURL),
+		Why:     fmt.Sprintf("This is your Jellyfin login, the same one you use at %s, not your Dynu account.", localURL),
 		Actions: []Action{
 			{ID: "retry", Label: "Try again", Kind: ActionRetry},
 			{ID: "apikey", Label: "Use an API key instead", Kind: ActionAlternate},
@@ -131,7 +131,7 @@ func JellyfinTooOld(found, minimum string) *Error {
 		Message: fmt.Sprintf("Your Jellyfin is version %s, and RASA needs %s or newer.", found, minimum),
 		Why:     "Older versions store their network settings differently, so RASA can't configure them safely.",
 		Actions: []Action{
-			{ID: "recheck", Label: "I've updated — check again", Kind: ActionRetry},
+			{ID: "recheck", Label: "I have updated it, check again", Kind: ActionRetry},
 		},
 		Detail: fmt.Sprintf("version %s below floor %s", found, minimum),
 	}
@@ -180,7 +180,7 @@ func HostnameTaken(hostname string, suggestions []string) *Error {
 		Message: fmt.Sprintf("%s is already taken.", hostname),
 		Why:     "Someone else is using that name. The same name is free on other addresses.",
 		Actions: []Action{
-			{ID: "suggestions", Label: "Choose another", Kind: ActionAlternate},
+			{ID: "suggestions", Label: "Choose a different name", Kind: ActionAlternate},
 		},
 		Detail: fmt.Sprintf("hostname %s unavailable, %d alternatives offered", hostname, len(suggestions)),
 	}
@@ -194,7 +194,7 @@ func BlockedParentDomain(domain string) *Error {
 		Message: fmt.Sprintf("Addresses ending in %s can't be used for a secure connection.", domain),
 		Why:     "Certificates for that address are shared with every other user of it, which makes setup fail unpredictably. Pick one of the offered addresses instead.",
 		Actions: []Action{
-			{ID: "pick_domain", Label: "Choose a different address", Kind: ActionAlternate},
+			{ID: "pick_domain", Label: "Choose a different ending", Kind: ActionAlternate},
 		},
 		Detail: fmt.Sprintf("parent domain %s not on PSL allowlist", domain),
 	}
@@ -246,10 +246,10 @@ func InvalidHostname(label string, p HostnameProblem, limit int) *Error {
 		e.Message = "Give your server a name."
 		e.Why = "This becomes the web address you'll type to reach it."
 	case HostnameTooShort:
-		e.Message = fmt.Sprintf("That name is a little short — use at least %d characters.", limit)
+		e.Message = fmt.Sprintf("That name is a little short. Use at least %d characters.", limit)
 		e.Why = "Very short names on these addresses were claimed years ago, so a longer one is far more likely to be free."
 	case HostnameTooLong:
-		e.Message = fmt.Sprintf("That name is too long — keep it to %d characters or fewer.", limit)
+		e.Message = fmt.Sprintf("That name is too long. Keep it to %d characters or fewer.", limit)
 	case HostnameBadCharacters:
 		e.Message = "Use only letters, numbers and hyphens."
 		e.Why = "Spaces, dots and other punctuation aren't allowed in a web address."

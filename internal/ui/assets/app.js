@@ -23,15 +23,15 @@ const DYNU_API_KEYS = "https://www.dynu.com/en-US/ControlPanel/APICredentials";
  * The welcome screen promises six steps and three at the keyboard, so the
  * count has to come from one place or the promise quietly stops being true.
  * Screens outside the run - welcome, blocked, done, removing, removed - have
- * no position in it and hide the rail. */
-/* One capitalised word each, so six of them read as a set at a glance rather
- * than as a sentence someone got bored halfway through.
+ * no position in it and hide the rail.
  *
- * They also have to mean something to a reader who has not reached them yet,
- * which rules out the metaphor the port screen uses in its own heading: "the
- * door" lands once you are on it and says nothing three steps early. And
- * naming the address step after the user was simply wrong -- it is the
- * server's address being chosen, not their name. */
+ * One capitalised word each, so six of them read as a set at a glance rather
+ * than as a sentence someone got bored halfway through. They also have to mean
+ * something to a reader who has not reached them yet, which rules out the
+ * metaphor the port screen uses in its own heading: "the door" lands once you
+ * are on it and says nothing three steps early. And naming the address step
+ * after the user was simply wrong - it is the server's address being chosen,
+ * not their name. */
 const JOURNEY = [
   { screen: "checking", label: "Checks" },
   { screen: "jellyfin", label: "Jellyfin" },
@@ -373,11 +373,11 @@ const DONE_COPY = {
   },
   inconclusive: {
     title: "Setup is finished",
-    lede: "Everything is configured. Whether it can be reached from outside couldn't be checked from this network — see below.",
+    lede: "Everything is configured. Whether it can be reached from outside couldn't be checked from this network. See below.",
   },
   unreachable: {
     title: "Setup is finished, but nothing can reach it yet",
-    lede: "Your address and certificate are ready. The last step is letting connections in from outside — see below.",
+    lede: "Your address and certificate are ready. The last step is letting connections in from outside. See below.",
   },
 };
 
@@ -427,7 +427,7 @@ function farewell() {
 
   const removed = model && model.screen === "removed";
   document.getElementById("closed-title").textContent =
-    removed ? "You can close this tab" : "All set — you can close this tab";
+    removed ? "You can close this tab" : "All set, you can close this tab";
   document.getElementById("closed-lede").textContent = removed
     ? "Remote access has been removed and RASA has stopped running."
     : "Setup has finished and RASA has stopped running. Your remote access keeps working without it.";
