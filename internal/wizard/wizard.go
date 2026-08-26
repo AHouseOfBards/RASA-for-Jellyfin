@@ -95,6 +95,11 @@ type Wizard struct {
 	// their router, long after RASA is gone.
 	guideText string
 
+	// portSwitched records that setup has already moved to the fallback port
+	// after a failed reachability check, so it cannot do it twice and cannot
+	// loop.
+	portSwitched bool
+
 	busy bool
 	subs map[chan Model]struct{}
 }

@@ -1334,3 +1334,58 @@ func (m *conflictingMapper) Add(ctx context.Context, r portmap.Request) (*portma
 		VerifiedByReadback: true,
 	}, nil
 }
+
+// Unreachable is positive evidence -- something answered that was not us, or
+// the path is blocked -- and the commonest cause is 443 already forwarded to
+// another device, which the local port probe cannot see. Setup moves itself to
+// the fallback port rather than finishing with an address nothing can reach.
+func TestUnreachableOn443MovesToTheFallbackPort(t *testing.T) {
+	r := &switchingReach{failPort: mode.PortPreferred}
+	h := newHarness(t, func(o *Options) {
+		o.NewReach = func(netip.Addr) Reacher { return r }
+	})
+	h.runHappyPath(t)
+
+	if got := h.w.Model().Result.URL; !strings.HasSuffix(got, ":8443") {
+		t.Errorf("final address is %q, want one ending :8443", got)
+	}
+	h.w.mu.Lock()
+	port := h.w.st.ListenPort
+	h.w.mu.Unlock()
+	if port != mode.PortFallback {
+		t.Errorf("saved listen port is %d, want %d", port, mode.PortFallback)
+	}
+	// The proxy has to be reinstalled on the new port, or nothing is serving
+	// on the port the address now names.
+	last := h.prox.installed[len(h.prox.installed)-1]
+	if last.ListenPort != mode.PortFallback {
+		t.Errorf("proxy was left listening on %d, want %d", last.ListenPort, mode.PortFallback)
+	}
+}
+
+// Inconclusive is the hairpinning case and says nothing about whether outside
+// traffic arrives. Switching ports on it would move working setups off 443 for
+// no reason, on the majority of consumer routers.
+func TestInconclusiveDoesNotMovePorts(t *testing.T) {
+	h := newHarness(t, func(o *Options) {
+		o.NewReach = func(netip.Addr) Reacher {
+			return &fakeReach{status: reach.Inconclusive}
+		}
+	})
+	h.runHappyPath(t)
+
+	if got := h.w.Model().Result.URL; strings.Contains(got, ":8443") {
+		t.Errorf("address is %q: a router that will not hairpin moved setup off 443", got)
+	}
+}
+
+// switchingReach fails on one port and succeeds on any other.
+type switchingReach struct{ failPort int }
+
+func (s *switchingReach) CheckURL(ctx context.Context, url, contains string) reach.Result {
+	if strings.Contains(url, fmt.Sprintf(":%d/", s.failPort)) ||
+		(!strings.Contains(url, ":8443/") && s.failPort == mode.PortPreferred) {
+		return reach.Result{Status: reach.Unreachable, Method: "fake"}
+	}
+	return reach.Result{Status: reach.Reachable, Method: "fake"}
+}

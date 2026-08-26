@@ -13,6 +13,7 @@ import (
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/dnswait"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/dynu"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/jellyfin"
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/mode"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/probe"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/qr"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/rasaerr"
@@ -460,6 +461,23 @@ func (w *Wizard) verify(ctx context.Context) error {
 		w.addWarning("unverified", "RASA couldn't test your address from inside your own network, which many routers don't allow. Try it from a phone on mobile data.")
 		w.advance(state.Verified)
 	default:
+		// Unreachable, which is positive evidence: something answered that was
+		// not us, or the path is demonstrably blocked. Inconclusive is handled
+		// above and deliberately does not come here, because a router that
+		// will not hairpin says nothing about whether outside traffic arrives.
+		//
+		// The commonest cause of "something answered that was not us" is 443
+		// already being forwarded to another device on the network. The local
+		// port probe cannot see that: it binds a socket on this machine, so a
+		// port another device owns looks free. Moving to the fallback port is
+		// the one repair available, and doing it here rather than telling the
+		// user to is the difference between finishing and not.
+		if port == mode.PortPreferred && !w.alreadySwitchedPort() {
+			if err := w.switchToFallbackPort(ctx); err != nil {
+				return err
+			}
+			return nil
+		}
 		w.step(SetupVerify, StepFailed, "")
 		w.addWarning("unreachable", "Your server couldn't be reached from outside. The port forwarding details in your recovery file are the usual fix.")
 		w.advance(state.Verified)
@@ -469,6 +487,48 @@ func (w *Wizard) verify(ctx context.Context) error {
 	// system is in once the user leaves.
 	w.advance(state.Running)
 	return nil
+}
+
+func (w *Wizard) alreadySwitchedPort() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.portSwitched
+}
+
+// switchToFallbackPort moves setup onto the alternative port and redoes the
+// parts that name a port, then checks again.
+//
+// The certificate is not among them: it is issued for the hostname over DNS-01
+// and does not care which port serves it, so this costs no reissuance and none
+// of the waiting that goes with it.
+func (w *Wizard) switchToFallbackPort(ctx context.Context) error {
+	log := w.log.WithPhase("verify")
+	log.Info("nothing reached the server on the usual port; moving to the alternative",
+		slog.Int("was", mode.PortPreferred), slog.Int("now", mode.PortFallback))
+
+	w.mu.Lock()
+	w.portSwitched = true
+	w.st.ListenPort = mode.PortFallback
+	w.decision.ListenPort = mode.PortFallback
+	w.mu.Unlock()
+	w.save()
+
+	w.step(SetupVerify, StepRunning, "Port 443 didn't work, trying 8443")
+
+	// Only the steps that carry a port. The address, the DNS record and the
+	// certificate are all unchanged.
+	if err := w.installProxy(ctx); err != nil {
+		return err
+	}
+	if err := w.configureJellyfin(ctx); err != nil {
+		return err
+	}
+
+	w.addWarning("port-switched",
+		"Port 443 was already in use on your network, so your address ends in :8443. "+
+			"If you set up port forwarding by hand, the rule needs to be for 8443, not 443.")
+
+	return w.verify(ctx)
 }
 
 func (w *Wizard) addWarning(code, text string) {
