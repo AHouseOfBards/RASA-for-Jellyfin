@@ -392,6 +392,12 @@ func TestISPGatewaysMatchTheirOwnHardwareOnly(t *testing.T) {
 		{Identity{Banner: "BGW320-505"}, "AT&T"},
 		{Identity{Vendor: "Charter"}, "Spectrum (Charter)"},
 		{Identity{Banner: "BT Smart Hub"}, "BT Hub"},
+		{Identity{Banner: "BT Home Hub 5"}, "BT Hub"},
+		{Identity{Banner: "Bell Home Hub"}, "Bell Home Hub"},
+		{Identity{Vendor: "Orange"}, "Orange Livebox"},
+		{Identity{Banner: "Freebox Server"}, "Freebox"},
+		{Identity{Vendor: "Telstra"}, "Telstra Smart Modem"},
+		{Identity{Vendor: "Rogers"}, "Rogers Ignite"},
 		{Identity{Vendor: "Virgin Media"}, "Virgin Media Hub"},
 		{Identity{Banner: "Sky Hub"}, "Sky Hub"},
 		{Identity{Vendor: "Verizon"}, "Verizon (Fios)"},
@@ -411,9 +417,8 @@ func TestRebadgedAndForeignHardwareFallsBack(t *testing.T) {
 	c := catalog(t)
 	for _, v := range []string{
 		"Sagemcom", "Technicolor", "Vantiva", "Arris", "Hitron", "Humax", "Askey",
-		"Orange", "Livebox", "Freebox", "Bouygues", "SFR", "Movistar", "TIM",
-		"Telekom", "Speedport", "Vodafone", "Ziggo", "KPN", "Telia", "TalkTalk",
-		"Plusnet", "Bell Canada", "Rogers", "Telus", "Telstra", "Optus",
+		"Bouygues", "SFR", "Movistar", "TIM", "Telekom", "Speedport", "Vodafone",
+		"Ziggo", "KPN", "Telia", "TalkTalk", "Plusnet", "Telus", "Optus",
 		"D-Link", "ZyXEL", "Huawei", "Xiaomi", "Tenda", "Amazon", "Skyworth",
 	} {
 		if e := c.Match(Identity{Vendor: v}); !e.IsDefault() {

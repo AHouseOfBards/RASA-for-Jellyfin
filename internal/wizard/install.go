@@ -62,7 +62,15 @@ func (w *Wizard) Install(ctx context.Context) error {
 	}
 
 	w.writeRecovery()
-	w.update(func(m *Model) { m.Screen = ScreenDone })
+	uninstaller := w.UninstallerPath()
+	w.update(func(m *Model) {
+		m.Screen = ScreenDone
+		m.Result.CanUninstall = uninstaller != ""
+		if uninstaller == "" && runtime.GOOS != "windows" {
+			// No uninstaller to launch, so the honest answer is the command.
+			m.Result.UninstallHint = "sudo rm -rf /usr/local/lib/rasa /usr/local/bin/rasa"
+		}
+	})
 	w.setQR()
 	w.log.OK("Remote access is set up.")
 	return nil
@@ -346,6 +354,13 @@ func (w *Wizard) configureJellyfin(ctx context.Context) error {
 	if err != nil {
 		w.step(SetupJellyfin, StepFailed, "")
 		return w.fail("jellyfin", err)
+	}
+
+	// Things Jellyfin is configured to do that RASA will not override, but
+	// which stop remote access working. Surfaced rather than silently fixed:
+	// they are the user's own security settings.
+	for _, text := range out.Warnings {
+		w.addWarning("jellyfin-config", text)
 	}
 
 	if out.RestartRequired {

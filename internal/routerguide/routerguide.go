@@ -332,3 +332,11 @@ func (i Instructions) PlainText() string {
 	}
 	return b.String()
 }
+
+// Generic returns the fallback entry, whatever the router turned out to be.
+//
+// Matching is a guess made from a UPnP vendor string or an admin page title,
+// against paths verified from vendor documentation rather than hardware. When
+// the guess is wrong the specific guide is worse than useless: it sends the
+// user hunting for a menu their model does not have. This is the way back.
+func (c *Catalog) Generic() Entry { return c.entries[DefaultKey] }

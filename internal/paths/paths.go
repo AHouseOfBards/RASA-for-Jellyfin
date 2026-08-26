@@ -71,6 +71,11 @@ func programData() string {
 // StateFile is the path to the persisted setup state.
 func (l Layout) StateFile() string { return filepath.Join(l.StateDir, "state.json") }
 
+// LockFile records that a wizard is running, and where. Kept beside the state
+// rather than in a temp directory so a lock and the run it protects live and
+// die together.
+func (l Layout) LockFile() string { return filepath.Join(l.StateDir, "running.lock") }
+
 // RecoveryFile is the plain-text file left for the user, holding warnings,
 // port-forwarding values and log locations (SPEC.md §6, §15).
 func (l Layout) RecoveryFile() string {

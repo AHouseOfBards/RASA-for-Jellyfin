@@ -336,6 +336,12 @@ function renderPort() {
 
   document.getElementById("port-router").textContent = p.router_name || "Your router";
 
+  const guess = document.getElementById("port-guess");
+  guess.hidden = !p.router_guessed;
+  if (p.router_guessed) {
+    document.getElementById("port-guess-name").textContent = p.router_name || "";
+  }
+
   const note = document.getElementById("port-note");
   note.textContent = p.router_note || "";
   note.hidden = !p.router_note;
@@ -411,6 +417,17 @@ function renderDone() {
   document.getElementById("recovery-path").textContent = model.result.recovery_file || "";
   document.getElementById("reach-note").textContent =
     model.result.reachable === "reachable" ? "" : (model.result.reach_message || "");
+
+  // Only once the address is on screen, so the user can test before removing.
+  const offer = document.getElementById("uninstall-offer");
+  const offerHint = document.getElementById("uninstall-hint");
+  const offerButton = document.getElementById("uninstall-button");
+  offer.hidden = !(model.result.can_uninstall || model.result.uninstall_hint);
+  offerButton.hidden = !model.result.can_uninstall;
+  offerHint.hidden = !model.result.uninstall_hint;
+  offerHint.textContent = model.result.uninstall_hint
+    ? "On this system there is nothing to launch. Run: " + model.result.uninstall_hint
+    : "";
 
   const box = document.getElementById("warnings");
   const list = document.getElementById("warning-list");
@@ -736,8 +753,18 @@ function wire() {
       case "port-open":
         post("/api/port/open");
         break;
+      case "port-generic":
+        post("/api/port/generic");
+        break;
       case "port-skip":
         post("/api/port/skip");
+        break;
+      case "uninstall":
+        // Confirmed, because it is the one button here that removes something,
+        // and it sits next to a button that removes something else entirely.
+        if (!confirm("Remove the RASA setup app?\n\nYour remote access keeps working. This only deletes the setup app itself.")) break;
+        farewell();
+        await post("/api/uninstall");
         break;
       case "quit":
         farewell();

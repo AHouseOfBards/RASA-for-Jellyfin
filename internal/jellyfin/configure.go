@@ -18,6 +18,15 @@ const (
 	KeyBaseURL            = "BaseUrl"
 	KeyRequireHTTPS       = "RequireHttps"
 	KeyEnableHTTPS        = "EnableHttps"
+
+	// Jellyfin's own allow/deny list for remote clients. RASA reads it and
+	// never writes it: it is a security decision the user made deliberately,
+	// and quietly widening it on their behalf would be the wrong kind of
+	// helpful. Reporting it matters though, because a filter that excludes
+	// the internet blocks every remote client while every other part of
+	// setup succeeds.
+	KeyRemoteIPFilter     = "RemoteIPFilter"
+	KeyRemoteFilterIsDeny = "IsRemoteIPFilterBlacklist"
 )
 
 // Settings are what RASA needs Jellyfin to believe.
@@ -44,6 +53,9 @@ type Result struct {
 	// BaseURL is Jellyfin's configured base path, read and never modified.
 	// The generated Caddyfile must match it.
 	BaseURL string
+	// Warnings are things RASA found and deliberately did not change, but
+	// which will stop remote access working.
+	Warnings []string
 	// RestartRequired is true when a changed key needs a restart to take
 	// effect.
 	RestartRequired bool
@@ -115,6 +127,25 @@ func (c *Client) Apply(ctx context.Context, s Settings) (*Result, error) {
 		res.Changes = append(res.Changes, Change{Key: KeyRequireHTTPS, From: "true", To: "false"})
 		cfg[KeyRequireHTTPS] = false
 		res.RestartRequired = true
+	}
+
+	// Read, never written. An allow-list that does not include the internet
+	// blocks every remote client, and it does it after RASA has reported
+	// success on every other step: the address resolves, the certificate is
+	// valid, the proxy answers, and Jellyfin refuses the request. Nothing
+	// else in the product would explain that.
+	if filter := asStringSlice(cfg[KeyRemoteIPFilter]); len(filter) > 0 {
+		if asBool(cfg[KeyRemoteFilterIsDeny]) {
+			res.Warnings = append(res.Warnings,
+				"Jellyfin has a list of blocked addresses ("+join(filter)+"). "+
+					"Anyone on those addresses will not be able to reach your server.")
+		} else {
+			res.Warnings = append(res.Warnings,
+				"Jellyfin is set to allow only these addresses ("+join(filter)+"), "+
+					"which will block everyone else including you when you are away from home. "+
+					"RASA has left it alone because it is your security setting. "+
+					"Clear it in Jellyfin under Networking if you want remote access to work.")
+		}
 	}
 
 	if !res.Changed() {

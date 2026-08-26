@@ -28,6 +28,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -180,6 +181,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/port/open", s.guard(s.async("port", func(ctx context.Context, body request) error {
 		return s.w.OpenPort(ctx)
 	})))
+	s.mux.HandleFunc("/api/port/generic", s.guard(s.async("port", func(ctx context.Context, body request) error {
+		return s.w.UseGenericGuide(ctx)
+	})))
 	s.mux.HandleFunc("/api/port/skip", s.guard(s.async("port", func(ctx context.Context, body request) error {
 		return s.w.SkipPort(ctx)
 	})))
@@ -189,6 +193,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/remove", s.guard(s.async("remove", func(ctx context.Context, body request) error {
 		return s.w.RemoveRemoteAccess(ctx)
 	})))
+	s.mux.HandleFunc("/api/uninstall", s.guard(s.handleUninstall))
 	s.mux.HandleFunc("/api/quit", s.guard(s.handleQuit))
 }
 
@@ -414,4 +419,54 @@ func UserError(err error) rasaerr.UserFacing {
 		Code:    rasaerr.CodeUnexpected,
 		Message: "Something went wrong.",
 	}
+}
+
+// Addr is the host:port the wizard is serving on, without the token.
+//
+// Separate from URL on purpose: this is what gets written to the instance lock
+// in a world-readable directory, and the token must not go there. It is the one
+// thing standing between any local user and an administrator-privileged
+// installer.
+func (s *Server) Addr() string {
+	if s.ln == nil {
+		return ""
+	}
+	return s.ln.Addr().String()
+}
+
+// handleUninstall launches RASA's own uninstaller and stops.
+//
+// Removing the setup app is not removing remote access. The proxy, the
+// scheduled task and Jellyfin's settings are installed to outlive RASA, so this
+// leaves a working system behind: that is the entire design, and it is why the
+// two actions are separate buttons with different words on them.
+//
+// The uninstaller is started detached and this process then exits, because it
+// is about to try deleting the executable currently running.
+func (s *Server) handleUninstall(wr http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(wr, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	path := s.w.UninstallerPath()
+	if path == "" {
+		writeJSON(wr, http.StatusOK, map[string]string{
+			"status": "unavailable",
+			"error":  "there is no uninstaller for this installation",
+		})
+		return
+	}
+
+	cmd := exec.Command(path)
+	if err := cmd.Start(); err != nil {
+		s.log.Error("could not start the uninstaller", slog.Any("err", err))
+		writeJSON(wr, http.StatusOK, map[string]string{"status": "failed", "error": err.Error()})
+		return
+	}
+	// Not waited on: it outlives this process by design.
+	go func() { _ = cmd.Wait() }()
+
+	s.log.Info("uninstaller started", slog.String("path", path))
+	writeJSON(wr, http.StatusOK, map[string]string{"status": "uninstalling"})
+	s.finish()
 }

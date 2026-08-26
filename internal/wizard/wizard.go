@@ -100,6 +100,10 @@ type Wizard struct {
 	// loop.
 	portSwitched bool
 
+	// wantGenericGuide is set once the user says the router-specific guide does
+	// not match what is in front of them. Their eyes beat a UPnP vendor string.
+	wantGenericGuide bool
+
 	busy bool
 	subs map[chan Model]struct{}
 }
@@ -1028,6 +1032,14 @@ func (w *Wizard) showGuide(res probe.Result, d mode.Decision, mapped *state.Port
 		Model:  res.Router.Model,
 		MAC:    res.Router.MAC,
 	})
+	// The user has looked at the specific guide and said it does not match
+	// their router. Their eyes beat a UPnP vendor string.
+	w.mu.Lock()
+	generic := w.wantGenericGuide
+	w.mu.Unlock()
+	if generic {
+		entry = cat.Generic()
+	}
 	ins := routerguide.Build(entry, routerguide.Values{
 		Gateway:       res.Router.Gateway,
 		InternalIP:    res.Host.LANAddress,
@@ -1046,9 +1058,11 @@ func (w *Wizard) showGuide(res probe.Result, d mode.Decision, mapped *state.Port
 	)
 
 	view := PortView{
-		Needed:     true,
-		RouterName: ins.RouterName,
-		RouterNote: ins.Note,
+		Needed:           true,
+		RouterName:       ins.RouterName,
+		RouterNote:       ins.Note,
+		RouterGuessed:    !ins.Generic,
+		GenericRequested: generic,
 		// Only when the router never offered it. A router that offered it and
 		// then refused the mapping is a different problem, and telling that
 		// user to go and enable a setting they already have on wastes their
@@ -1104,4 +1118,34 @@ func (w *Wizard) SkipPort(ctx context.Context) error {
 		m.Screen = ScreenSetup
 	})
 	return nil
+}
+
+// UseGenericGuide switches the port screen to the generic instructions.
+//
+// Matching a router is a guess made from a UPnP vendor string or an admin page
+// title, and the catalogue is verified against vendor documentation rather than
+// hardware. When the guess is wrong the specific guide is worse than useless:
+// it sends the user hunting for a menu their model does not have. This is the
+// way back, and it is one-way on purpose — someone who has said "that is not my
+// router" should not have it argued with on the next render.
+func (w *Wizard) UseGenericGuide(ctx context.Context) error {
+	if err := w.begin(); err != nil {
+		return err
+	}
+	defer w.end()
+
+	w.mu.Lock()
+	w.wantGenericGuide = true
+	res, d := w.probed, w.decision
+	w.mu.Unlock()
+
+	w.log.WithPhase("portmap").Info("user asked for the generic port forwarding guide")
+	w.showGuide(res, d, w.currentMapping())
+	return nil
+}
+
+func (w *Wizard) currentMapping() *state.PortMapping {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.st.PortMapping
 }

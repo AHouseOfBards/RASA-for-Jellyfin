@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/caddy"
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/instance"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/logging"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/paths"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/recovery"
@@ -168,6 +170,22 @@ func run(ctx context.Context, o options) error {
 	if err := srv.Start(); err != nil {
 		return err
 	}
+
+	// After Start, because the lock records where this wizard is serving and
+	// there is no address until the listener is bound.
+	//
+	// Two copies is not a harmless duplicate: they share one state file, one
+	// log and one credential store, and both are willing to install a service,
+	// register a scheduled task and claim a hostname. The loser stops here,
+	// having bound only a loopback port it is about to release.
+	lock, err := instance.Acquire(layout.LockFile(), srv.Addr())
+	if err != nil {
+		if errors.Is(err, instance.ErrAlreadyRunning) {
+			return fmt.Errorf("%w\n\n  Finish or close that one first. If you cannot find it,\n  close RASA everywhere and start it again", err)
+		}
+		return err
+	}
+	defer lock.Release()
 	defer func() {
 		shutdown, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()

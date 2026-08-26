@@ -141,6 +141,18 @@ type PortView struct {
 	// RouterName is what RASA believes the router is, so the instructions can
 	// name it rather than saying "your router".
 	RouterName string `json:"router_name,omitempty"`
+	// RouterGuessed is true when these instructions come from a specific
+	// catalogue entry rather than the generic fallback.
+	//
+	// It is a guess, made from what the router reported over UPnP or the title
+	// of its admin page, and the catalogue is verified against vendor
+	// documentation rather than hardware. Saying which router RASA thinks it
+	// is talking to lets the user notice when it is wrong, instead of hunting
+	// for a menu that does not exist on their model.
+	RouterGuessed bool `json:"router_guessed,omitempty"`
+	// GenericRequested is true once the user has said the specific guide does
+	// not match, and has been given the generic one instead.
+	GenericRequested bool `json:"generic_requested,omitempty"`
 	// Instructions is the rendered guide, shown only when there is work to do.
 	Instructions []GuideStep `json:"instructions,omitempty"`
 	// RouterNote is the catalogue's warning about the step people actually get
@@ -197,6 +209,13 @@ type ResultView struct {
 	LogFile      string `json:"log_file,omitempty"`
 	// QRPNG is a data: URI for the address, for pointing a phone at.
 	QRPNG string `json:"qr_png,omitempty"`
+	// CanUninstall is true when there is an uninstaller to launch, so the done
+	// screen can offer to remove the setup app once the user has tested that
+	// remote access works. Deliberately distinct from removing remote access:
+	// uninstalling leaves the system working, which is the whole design.
+	CanUninstall bool `json:"can_uninstall,omitempty"`
+	// UninstallHint is what to do where there is no uninstaller to run.
+	UninstallHint string `json:"uninstall_hint,omitempty"`
 }
 
 // Model is the whole UI state. It is a value: the UI renders a snapshot and

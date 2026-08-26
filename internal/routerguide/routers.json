@@ -223,6 +223,66 @@
     "source": "https://helpforum.sky.com/t5/Sky-Broadband/Sky-Hub-How-to-Configure-Port-Forwarding/ta-p/707150"
   },
 
+  "orange": {
+    "name": "Orange Livebox",
+    "match": {
+      "vendor": ["Orange"],
+      "banner": ["Livebox", "Orange"]
+    },
+    "path": "Paramètres avancés → Réseau → NAT/PAT",
+    "note": "Orange calls port forwarding NAT/PAT. The rule will not accept this computer until it has a fixed address, so set that first in DHCP. Older Livebox 4 and 5 firmware put the same page under Configuration avancée.",
+    "reservationPath": "Paramètres avancés → Réseau → DHCP, by giving this computer a fixed address",
+    "source": "https://assistancepro.orange.fr/internet_livebox/utiliser/parametrages_avances_vpn_adresse_ip/livebox_5_6_pro/livebox__et___configurer_les_regles_nat_pour_pouvoir_utiliser_certains_jeux_ou_applications_serveur-393929"
+  },
+
+  "freebox": {
+    "name": "Freebox",
+    "match": {
+      "vendor": ["Freebox"],
+      "banner": ["Freebox", "mafreebox"]
+    },
+    "path": "http://mafreebox.freebox.fr → Paramètres de la Freebox → Mode avancé → Redirections de ports",
+    "note": "The same settings are in the Freebox Connect app under Réseau, and in your Espace Abonné under Mes équipements Freebox → Server internet → Paramètres réseau avancés.",
+    "reservationPath": "the DHCP section of the same advanced settings, as a bail statique",
+    "source": "https://assistance.free.fr/articles/1395"
+  },
+
+  "telstra": {
+    "name": "Telstra Smart Modem",
+    "match": {
+      "vendor": ["Telstra"],
+      "banner": ["Telstra"]
+    },
+    "path": "WAN Services → Port Forwarding",
+    "note": "Depending on the model this is called WAN Services or just Services, and on some it sits under Advanced → Firewall instead.",
+    "reservationPath": "the modem's DHCP settings, by giving this computer a fixed address",
+    "source": "https://www.telstra.com.au/support/internet-and-home-phone/set-up-port-forwarding"
+  },
+
+  "bell": {
+    "name": "Bell Home Hub",
+    "match": {
+      "vendor": ["Bell Canada"],
+      "banner": ["Bell Home Hub", "HomeHub 3000", "HomeHub 4000", "GigaHub"]
+    },
+    "path": "http://192.168.2.1 → Advanced tools and settings → Port forwarding",
+    "note": "On Bell's wireless home internet, rather than fibre, the hub sits behind a second layer of NAT that you cannot configure, and no port forwarding rule will work. On fibre it does.",
+    "reservationPath": "Advanced tools and settings → DHCP, by reserving this computer's address",
+    "source": "https://support.bell.ca/internet/products/home-hub-1000-modem"
+  },
+
+  "rogers": {
+    "name": "Rogers Ignite",
+    "match": {
+      "vendor": ["Rogers"],
+      "banner": ["Rogers", "Ignite"]
+    },
+    "path": "Rogers Xfinity app → WiFi → View WiFi equipment → Advanced Settings → Port Forwarding → Add Port Forward",
+    "note": "Rogers moved these settings into the app; the gateway's own pages no longer offer them. Give this computer a static address first or it will not appear in the device list.",
+    "reservationPath": "the same Advanced Settings screen, under the device's details",
+    "source": "https://www.rogers.com/support/internet/use-port-forwarding-with-ignite-wifi-hub"
+  },
+
   "_default": {
     "name": "your router",
     "match": {},

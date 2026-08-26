@@ -193,6 +193,15 @@
       </div>
       <div id="port-guide" hidden>
         <h2 id="port-router"></h2>
+        <!-- Which router RASA thinks it is talking to, and the way out when it
+             is wrong. Matching is a guess from a UPnP vendor string or an admin
+             page title, and a wrong guess is worse than the generic guide: it
+             sends someone hunting for a menu their model does not have. -->
+        <p class="hint" id="port-guess" hidden>
+          These steps are for a <strong id="port-guess-name"></strong>, which is
+          what your router seems to be.
+          <button class="link" type="button" data-action="port-generic">Not my router — show general steps</button>
+        </p>
         <!-- The catalogue's warning about the step people actually get stuck
              on for this router. It reached the recovery file and never this
              screen, which is the one place the user is standing in their
@@ -282,6 +291,20 @@
         Your address, your port forwarding details and where to find the logs are
         written to <code id="recovery-path"></code>. Keep it. RASA doesn't need to
         stay installed, but your remote access keeps working.
+      </div>
+      <!-- Removing the setup app is not removing remote access, and the two
+           must not read alike. This one leaves everything working, which is
+           the whole point of RASA being disposable. Offered only after the
+           address is on screen, so the user can test it first. -->
+      <div class="notice" id="uninstall-offer" hidden>
+        <strong>Finished with RASA?</strong>
+        Test your address first, on a phone with Wi-Fi turned off. Once you are
+        happy it works you can remove this setup app: your remote access keeps
+        running without it.
+        <p class="hint" id="uninstall-hint" hidden></p>
+        <div class="actions">
+          <button class="secondary" data-action="uninstall" id="uninstall-button">Remove the setup app</button>
+        </div>
       </div>
       <div class="actions">
         <button class="primary" data-action="quit">Finish</button>
