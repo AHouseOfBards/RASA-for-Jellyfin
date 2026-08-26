@@ -51,10 +51,12 @@ fi
 if [ -z "$SRC" ]; then
   command -v curl >/dev/null 2>&1 || { echo "curl is required to download a release" >&2; exit 1; }
 
-  # /releases/latest excludes prereleases, and every release so far is one, so
-  # it answers with nothing. Falling back to the full list -- which GitHub
-  # returns newest first -- is what makes this work before there is a stable
-  # release, without pinning the stable path to whatever was published last.
+  # /releases/latest excludes anything flagged as a prerelease, and answers
+  # with nothing at all if every release is one. Releases are no longer
+  # flagged that way -- a beta that cannot be found is worse than one that is
+  # not flagged, and the name carries the warning instead -- so this normally
+  # answers first time. The fallback to the full list, which GitHub returns
+  # newest first, stays for the case where it does not.
   VERSION="${VERSION:-$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
     | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')}"
   if [ -z "$VERSION" ]; then

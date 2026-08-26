@@ -153,13 +153,36 @@ jobs:
       - name: Collect checksums
         run: cat assets/checksums-*.txt > assets/SHA256SUMS.txt
 
+      # The tag stays v0.5.0-beta, because that is what a version is, but the
+      # release is called "0.5.0 Beta". The name is what shows on the
+      # repository page, so that is where the warning has to be legible to
+      # someone who is not reading tag suffixes.
+      - name: Compose the release name
+        id: name
+        run: |
+          tag="$GITHUB_REF_NAME"
+          name="${tag#v}"
+          case "$tag" in
+            *-beta)  name="${name%-beta} Beta" ;;
+            *-alpha) name="${name%-alpha} Alpha" ;;
+            *-rc*)   name="${name%-rc*} RC${tag##*-rc}" ;;
+          esac
+          echo "value=$name" >> "$GITHUB_OUTPUT"
+
       - uses: softprops/action-gh-release@v2
         with:
-          # A tag with a suffix is a prerelease: v0.1.0-beta is, v0.1.0 is not.
-          # This is not cosmetic. It keeps a beta out of the "latest release"
-          # that anyone browsing the repository lands on, which matters while
-          # the README still lists things nobody has run yet.
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          name: ${{ steps.name.outputs.value }}
+
+          # Deliberately NOT a GitHub prerelease, even though it is a beta.
+          #
+          # A prerelease is hidden from the repository page and excluded from
+          # the /releases/latest API, which means the only build there is
+          # cannot be found by someone who lands on the project or by
+          # install.sh. Being discoverable is worth more here than the flag;
+          # the word Beta is carried in the release name and the notes say
+          # plainly what has not been tested.
+          prerelease: false
+          make_latest: "true"
           files: |
             assets/rasa-*
             assets/SHA256SUMS.txt
