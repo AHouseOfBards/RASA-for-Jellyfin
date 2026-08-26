@@ -53,7 +53,7 @@ off. That is the only test that proves it works from outside your home.
 
 ## Before you rely on it
 
-This is version 0.5. It has been run start to finish on Windows against a real Jellyfin
+This is version 0.6. It has been run start to finish on Windows against a real Jellyfin
 server, and it works. Some things have not been tested yet:
 
 * Nobody has run the installer on a clean machine.
