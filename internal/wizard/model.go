@@ -143,6 +143,16 @@ type PortView struct {
 	RouterName string `json:"router_name,omitempty"`
 	// Instructions is the rendered guide, shown only when there is work to do.
 	Instructions []GuideStep `json:"instructions,omitempty"`
+	// RouterNote is the catalogue's warning about the step people actually get
+	// stuck on for this router: a hidden Advanced toggle, a field that must be
+	// set a particular way, a menu that moved between firmware versions.
+	//
+	// It reached the recovery file and never the screen, which is the one
+	// place the user is standing in their router's admin page trying to follow
+	// along. Reported as "the instructions were not specific enough for my
+	// router" by someone whose router's note said exactly what they were
+	// missing.
+	RouterNote string `json:"router_note,omitempty"`
 	// Values are the exact fields to type. These are what users get wrong,
 	// so they are presented filled in rather than as blanks (SPEC.md §6).
 	Values []GuideValue `json:"values,omitempty"`

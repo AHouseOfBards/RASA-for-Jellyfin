@@ -1048,6 +1048,7 @@ func (w *Wizard) showGuide(res probe.Result, d mode.Decision, mapped *state.Port
 	view := PortView{
 		Needed:     true,
 		RouterName: ins.RouterName,
+		RouterNote: ins.Note,
 		// Only when the router never offered it. A router that offered it and
 		// then refused the mapping is a different problem, and telling that
 		// user to go and enable a setting they already have on wastes their

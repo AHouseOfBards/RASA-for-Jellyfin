@@ -336,6 +336,10 @@ function renderPort() {
 
   document.getElementById("port-router").textContent = p.router_name || "Your router";
 
+  const note = document.getElementById("port-note");
+  note.textContent = p.router_note || "";
+  note.hidden = !p.router_note;
+
   const steps = document.getElementById("port-steps");
   steps.replaceChildren();
   for (const s of p.instructions) {

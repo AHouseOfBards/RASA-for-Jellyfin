@@ -339,3 +339,104 @@ func TestRenderedStepsHaveNoDoubledVerbs(t *testing.T) {
 		}
 	}
 }
+
+// Real brands that are deliberately not in the catalogue. Each must land on
+// the generic fallback with usable instructions rather than matching something
+// else by accident: a Verizon path shown to a Sagemcom owner is worse than the
+// generic one, which is the standard the catalogue header sets.
+func TestUnlistedBrandsGetTheGenericGuide(t *testing.T) {
+	c := catalog(t)
+	unlisted := []string{
+		"Sagemcom", "Technicolor", "Arris", "Hitron", "ZyXEL",
+		"D-Link", "Huawei", "Xiaomi", "Amazon", "Vodafone",
+	}
+	for _, vendor := range unlisted {
+		e := c.Match(Identity{Vendor: vendor})
+		if !e.IsDefault() {
+			t.Errorf("%s matched %q; an unlisted brand must fall back, not borrow another vendor's menus", vendor, e.Name)
+			continue
+		}
+		if e.Path == "" || e.ReservationPath == "" {
+			t.Errorf("%s fell back to an entry with nothing usable in it", vendor)
+		}
+	}
+}
+
+// The catalogue header says an entry without a source has not been verified
+// and should not be trusted over the generic fallback. Enforced here, because
+// the first version of this file was written from memory and read exactly as
+// confidently as a checked one.
+func TestEveryEntryNamesWhereItWasVerified(t *testing.T) {
+	c := catalog(t)
+	for _, e := range c.entries {
+		if e.IsDefault() {
+			continue // Nothing to verify: it names no vendor's menus.
+		}
+		if e.Source == "" {
+			t.Errorf("%s has no source; either verify it against the vendor's documentation or remove it", e.Name)
+		}
+	}
+}
+
+// Each entry must match its own hardware. ISP gateways are the risk: they are
+// rebadged from a handful of manufacturers, so a needle like "Sagemcom" or
+// "Arris" would claim half a dozen unrelated ISPs' customers.
+func TestISPGatewaysMatchTheirOwnHardwareOnly(t *testing.T) {
+	c := catalog(t)
+	for _, tc := range []struct {
+		id   Identity
+		want string
+	}{
+		{Identity{Vendor: "Comcast"}, "Xfinity (Comcast)"},
+		{Identity{Banner: "XB8"}, "Xfinity (Comcast)"},
+		{Identity{Banner: "BGW320-505"}, "AT&T"},
+		{Identity{Vendor: "Charter"}, "Spectrum (Charter)"},
+		{Identity{Banner: "BT Smart Hub"}, "BT Hub"},
+		{Identity{Vendor: "Virgin Media"}, "Virgin Media Hub"},
+		{Identity{Banner: "Sky Hub"}, "Sky Hub"},
+		{Identity{Vendor: "Verizon"}, "Verizon (Fios)"},
+		{Identity{Vendor: "Actiontec"}, "Verizon (Fios)"},
+	} {
+		if got := c.Match(tc.id).Name; got != tc.want {
+			t.Errorf("%+v matched %q, want %q", tc.id, got, tc.want)
+		}
+	}
+}
+
+// The manufacturers behind rebadged ISP gateways, plus brands from markets with
+// no entry. None may match: the manufacturer of an ISP box says nothing about
+// whose menus the customer is looking at, and a confidently wrong guide is
+// worse than the generic one.
+func TestRebadgedAndForeignHardwareFallsBack(t *testing.T) {
+	c := catalog(t)
+	for _, v := range []string{
+		"Sagemcom", "Technicolor", "Vantiva", "Arris", "Hitron", "Humax", "Askey",
+		"Orange", "Livebox", "Freebox", "Bouygues", "SFR", "Movistar", "TIM",
+		"Telekom", "Speedport", "Vodafone", "Ziggo", "KPN", "Telia", "TalkTalk",
+		"Plusnet", "Bell Canada", "Rogers", "Telus", "Telstra", "Optus",
+		"D-Link", "ZyXEL", "Huawei", "Xiaomi", "Tenda", "Amazon", "Skyworth",
+	} {
+		if e := c.Match(Identity{Vendor: v}); !e.IsDefault() {
+			t.Errorf("vendor %q matched %q; it must fall back", v, e.Name)
+		}
+		if e := c.Match(Identity{Banner: v}); !e.IsDefault() {
+			t.Errorf("banner %q matched %q; it must fall back", v, e.Name)
+		}
+	}
+}
+
+// Firmware generations outlive their menus. Someone on a router bought years
+// ago is exactly the person who needs the guide, so an entry whose vendor has
+// moved the page has to name the old path too.
+func TestEntriesWhoseVendorMovedThePageNameTheOldOne(t *testing.T) {
+	c := catalog(t)
+	for _, key := range []string{"asus", "tplink", "netgear", "fritzbox", "linksys", "ubiquiti", "verizon", "xfinity", "google", "sky"} {
+		e, ok := c.entries[key]
+		if !ok {
+			t.Fatalf("no entry %q", key)
+		}
+		if !strings.Contains(strings.ToLower(e.Note), "older") {
+			t.Errorf("%s: note does not mention the older firmware path", e.Name)
+		}
+	}
+}

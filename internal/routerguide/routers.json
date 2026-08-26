@@ -2,6 +2,11 @@
   "_comment": [
     "Router port-forwarding instructions. Adding a router is a pull request, not a release.",
     "",
+    "Every entry carries a 'source': the vendor page its menu path was checked against.",
+    "An entry without one has not been verified and should not be trusted over the generic",
+    "fallback. This field exists because the first version of this file was written from",
+    "memory and read exactly as confidently as a checked one.",
+    "",
     "Matching is tried in this order, most reliable first:",
     "  vendor  - substring of the manufacturer the router reports over UPnP. Most reliable.",
     "  banner  - substring of the gateway admin page title or Server header. Used when UPnP is off.",
@@ -21,8 +26,9 @@
       "banner": ["ASUS"]
     },
     "path": "WAN → Virtual Server / Port Forwarding",
-    "note": "Set 'Enable Port Forwarding' to Yes before the table will accept rows.",
-    "reservationPath": "LAN → DHCP Server → Manually Assigned IP around the DHCP list"
+    "note": "Switch 'Enable Port Forwarding' to ON before adding a rule. It is off by default, and the table will not accept rows until it is on. Then use 'Add profile'. Older ASUSWRT calls the page Virtual Server only, with the rules in a table on the page rather than behind Add profile.",
+    "reservationPath": "LAN → DHCP Server → Manually Assigned IP around the DHCP list",
+    "source": "https://www.asus.com/support/faq/1037906/"
   },
 
   "tplink": {
@@ -32,8 +38,9 @@
       "banner": ["TP-Link", "Archer"]
     },
     "path": "Advanced → NAT Forwarding → Virtual Servers",
-    "note": "Some Archer firmware calls this 'Port Forwarding' instead of 'Virtual Servers'.",
-    "reservationPath": "Advanced → Network → DHCP Server → Address Reservation"
+    "note": "Depending on the model this is called 'Virtual Servers' or 'Port Forwarding'. Older firmware puts it under Forwarding → Virtual Servers instead, with no Advanced tab.",
+    "reservationPath": "Advanced → Network → DHCP Server → Address Reservation",
+    "source": "https://www.tp-link.com/us/user-guides/archer-a7&c7_v5/chapter-13-nat-forwarding"
   },
 
   "netgear": {
@@ -42,9 +49,10 @@
       "vendor": ["NETGEAR"],
       "banner": ["NETGEAR"]
     },
-    "path": "Advanced → Advanced Setup → Port Forwarding / Port Triggering",
-    "note": "Choose 'Port Forwarding' rather than 'Port Triggering' — they are different features.",
-    "reservationPath": "Advanced → Setup → LAN Setup → Address Reservation"
+    "path": "ADVANCED → Advanced Setup → Port Forwarding / Port Triggering",
+    "note": "Choose 'Port Forwarding' rather than 'Port Triggering' — they are different features. Then use 'Add Custom Service' rather than picking from the service list. Older Smart Wizard firmware has no Advanced Setup level: it is simply Advanced → Port Forwarding / Port Triggering.",
+    "reservationPath": "ADVANCED → Setup → LAN Setup → Address Reservation",
+    "source": "https://kb.netgear.com/24289/How-do-I-set-up-port-forwarding-to-a-local-server-on-my-NETGEAR-router"
   },
 
   "fritzbox": {
@@ -54,8 +62,9 @@
       "banner": ["FRITZ!Box", "FRITZ"]
     },
     "path": "Internet → Permit Access → Port Sharing",
-    "note": "Turn on the Advanced View first, or Port Sharing is hidden.",
-    "reservationPath": "Home Network → Network → the device's Edit pencil → 'Always assign the same IPv4 address'"
+    "note": "Port sharing is added per device: choose 'Add Device for Sharing', pick this computer, then add a sharing for the port below. Older FRITZ!OS releases label the same screen Port Forwarding rather than Port Sharing.",
+    "reservationPath": "Home Network → Network → the device's Edit pencil → 'Always assign the same IPv4 address'",
+    "source": "https://en.avm.de/service/knowledge-base/dok/FRITZ-Box-7490/34_Setting-up-port-sharing-in-the-FRITZ-Box/"
   },
 
   "linksys": {
@@ -65,7 +74,9 @@
       "banner": ["Linksys"]
     },
     "path": "Security → Apps and Gaming → Single Port Forwarding",
-    "reservationPath": "Connectivity → Local Network → DHCP Reservations"
+    "note": "On older classic-firmware routers, the WRT series among them, Applications & Gaming is a tab of its own along the top rather than sitting under Security. The Linksys app has the same thing under the router's settings.",
+    "reservationPath": "Connectivity → Local Network → DHCP Reservations",
+    "source": "https://support.linksys.com/kb/article/310-en/"
   },
 
   "ubiquiti": {
@@ -74,9 +85,10 @@
       "vendor": ["Ubiquiti"],
       "banner": ["UniFi", "Ubiquiti"]
     },
-    "path": "Settings → Firewall & Security → Port Forwarding",
-    "note": "Older controllers put this under Settings → Routing & Firewall.",
-    "reservationPath": "Client Devices → the device → Settings → Fixed IP Address"
+    "path": "Settings → Policy Engine → Port Forwarding",
+    "note": "UniFi has moved this twice. On Network 9.3 it is Settings → Policy Table → Create New Policy → Port Forwarding; on older releases, Settings → Firewall & Security → Port Forwarding, and older still, Settings → Routing & Firewall.",
+    "reservationPath": "Client Devices → the device → Settings → Fixed IP Address",
+    "source": "https://help.ui.com/hc/en-us/articles/235723207-UniFi-Gateway-Port-Forwarding"
   },
 
   "mikrotik": {
@@ -86,8 +98,9 @@
       "banner": ["MikroTik", "RouterOS"]
     },
     "path": "IP → Firewall → NAT → add a dst-nat rule",
-    "note": "Set chain to dstnat, protocol tcp, dst-port to the port below, then action=dst-nat with the address and port below.",
-    "reservationPath": "IP → DHCP Server → Leases → make the lease static"
+    "note": "Set chain to dstnat, protocol tcp, dst-port to the port below, then action=dst-nat with to-address and to-port set to the values below.",
+    "reservationPath": "IP → DHCP Server → Leases → make the lease static",
+    "source": "https://help.mikrotik.com/docs/spaces/RKB/pages/154042388/Port+forwarding"
   },
 
   "synology": {
@@ -96,8 +109,10 @@
       "vendor": ["Synology"],
       "banner": ["Synology", "SRM"]
     },
-    "path": "Network Center → Port Forwarding",
-    "reservationPath": "Network Center → DHCP Server → DHCP Clients → Add to reservation"
+    "path": "Network Center → Port Forwarding → Port Forwarding",
+    "note": "Port Forwarding does not appear at all when the router is in wireless access point or repeater mode.",
+    "reservationPath": "Network Center → Local Network → DHCP Clients, then add the device to the reservation list",
+    "source": "https://kb.synology.com/en-us/SRM/help/SRM/NetworkCenter/port"
   },
 
   "verizon": {
@@ -106,9 +121,10 @@
       "vendor": ["Verizon", "Actiontec", "Greenwave"],
       "banner": ["Verizon", "Fios", "Actiontec"]
     },
-    "path": "switch from Simple to Advanced at the top right, then Security → Firewall → Port Forwarding",
-    "note": "The Advanced toggle is the step people miss: in Simple view there is no Port Forwarding entry at all. The rule also asks for a Schedule, which must be set to Always, and for a Source IP Address, which should be left as Any.",
-    "reservationPath": "Advanced → Network Settings → IP Address Distribution, by opening the connection and setting this computer to Static"
+    "path": "Advanced → Security & Firewall → Port Forwarding",
+    "note": "The Advanced toggle is the step people miss: in the simple view there is no Port Forwarding entry at all. The rule asks for 'Original port' and 'Frwd to Port', which are both the port below, and a Schedule, which must be left on Always rather than User Defined. On an older Fios Quantum Gateway (G1100 or MI424WR) there is no Advanced toggle and it is simply Firewall → Port Forwarding along the top.",
+    "reservationPath": "Advanced → Network Settings, in the DHCP settings for your network",
+    "source": "https://www.verizon.com/content/dam/verizon/support/consumer/documents/internet/fios-router-user-guide.pdf and https://www.verizon.com/content/dam/verizon/support/consumer/documents/fqgrouter-userguide.pdf"
   },
 
   "eero": {
@@ -117,9 +133,10 @@
       "vendor": ["eero"],
       "banner": ["eero"]
     },
-    "path": "eero app → Settings → Network Settings → Reservations & Port Forwarding",
-    "note": "eero requires the mobile app; there is no web admin page.",
-    "reservationPath": "the same screen — the reservation is created alongside the forward"
+    "path": "eero app → Settings → Network settings → Reservations & Port Forwarding",
+    "note": "eero requires the mobile app; there is no web admin page. The reservation and the forward are created together on this screen.",
+    "reservationPath": "the same screen — adding an IPv4 reservation is the first half of adding the forward",
+    "source": "https://support.eero.com/hc/en-us/articles/207908443-How-do-I-set-up-port-forwarding"
   },
 
   "google": {
@@ -128,9 +145,82 @@
       "vendor": ["Google"],
       "banner": ["Google"]
     },
-    "path": "Google Home app → Wi-Fi → Settings → Advanced networking → Port management",
-    "note": "Google Home requires a reserved address before it will offer the device for port forwarding.",
-    "reservationPath": "Advanced networking → DHCP IP reservations"
+    "path": "Google Home app → Home Wifi Settings → Advanced Networking → Port management → Add",
+    "note": "Choose the IPv4 tab, then pick this computer from the device list before entering the ports. If you set the network up years ago you may still have the older, separate Google Wifi app, where the same screen is under Settings → Network & general → Advanced networking.",
+    "reservationPath": "Advanced Networking → DHCP IP reservations",
+    "source": "https://support.google.com/googlehome/answer/6274503"
+  },
+
+  "xfinity": {
+    "name": "Xfinity (Comcast)",
+    "match": {
+      "vendor": ["Comcast", "Xfinity"],
+      "banner": ["Xfinity", "Comcast", "XB6", "XB7", "XB8"]
+    },
+    "path": "Xfinity app → WiFi → View WiFi equipment → Advanced Settings → Port Forwarding → Add Port Forward",
+    "note": "Choose Manual Setup rather than picking an application from the list. If Advanced Security is on and decides the port looks risky it will block it again afterwards, which looks exactly like the rule not working. An older, non-xFi Xfinity Gateway still has a web page at http://10.0.0.1 with Advanced → Port Forwarding → Add Service; on current xFi gateways only the app works.",
+    "reservationPath": "the same Advanced Settings screen — port forwarding only offers devices using IPv4 and DHCP",
+    "source": "https://www.xfinity.com/support/articles/xfi-port-forwarding"
+  },
+
+  "att": {
+    "name": "AT&T",
+    "match": {
+      "vendor": ["AT&T", "Pace", "2Wire"],
+      "banner": ["BGW210", "BGW320", "BGW620", "BGW830", "NVG589", "NVG599", "5268AC"]
+    },
+    "path": "Firewall → NAT/Gaming",
+    "note": "You need the Device Access Code printed on the side of the gateway to change anything. Under Service, choose Custom Services to enter the port below rather than picking an application.",
+    "reservationPath": "Settings → LAN → IP Address Allocation, by setting this computer's address to fixed",
+    "source": "https://www.att.com/support/article/internet/KM1215101"
+  },
+
+  "spectrum": {
+    "name": "Spectrum (Charter)",
+    "match": {
+      "vendor": ["Charter", "Spectrum"],
+      "banner": ["Spectrum", "Charter"]
+    },
+    "path": "My Spectrum app → Services → Network Equipment → your router → Advanced Settings",
+    "note": "The Add Port Assignment button stays greyed out until you have reserved this computer's address on the same screen. Reserve it first and the button turns blue.",
+    "reservationPath": "the same screen — open this computer under Create IP Reservations and turn on Reserve IP Address",
+    "source": "https://www.spectrum.net/support/internet/managing-advanced-settings-my-spectrum-app"
+  },
+
+  "bt": {
+    "name": "BT Hub",
+    "match": {
+      "vendor": ["British Telecom"],
+      "banner": ["BT Smart Hub", "BT Hub", "BT Home Hub", "Smart Hub 2", "Smart Hub 3"]
+    },
+    "path": "the Hub Manager at http://192.168.1.254 → Advanced Settings → Firewall → Port Forwarding",
+    "note": "The admin password is on the settings card on the back of the Hub, not your BT account password. Use 'Create a new port forwarding rule', and put the same number in both the Start and End boxes.",
+    "reservationPath": "Advanced Settings → Home Network → IP Addresses, by giving this computer an always-use-this address",
+    "source": "https://www.bt.com/help/broadband/learn-about-broadband/how-do-i-set-up-port-forwarding-on-my-bt-hub-"
+  },
+
+  "virginmedia": {
+    "name": "Virgin Media Hub",
+    "match": {
+      "vendor": ["Virgin Media", "VirginMedia"],
+      "banner": ["Virgin Media", "Super Hub", "Virgin"]
+    },
+    "path": "Advanced Settings → Security → Port Forwarding",
+    "note": "A TCP rule on port 443 does not take effect until the Hub is restarted, so restart it after saving or the rule will look like it did nothing. Fill in Local and External start and end ports with the same number.",
+    "reservationPath": "Advanced Settings → DHCP, by reserving this computer's address",
+    "source": "https://community.virginmedia.com/blog/Digital-life/how-to-set-up-port-forwarding/3530654"
+  },
+
+  "sky": {
+    "name": "Sky Hub",
+    "match": {
+      "vendor": ["Sky Broadband"],
+      "banner": ["Sky Hub", "Sky Max Hub", "SR102", "SR203", "SR213"]
+    },
+    "path": "My Sky app → Broadband → Product Settings → Advanced settings",
+    "note": "Sky moved these settings out of the hub's own pages and into the app for the Max Hub. On an older Sky Hub 4 or earlier they are still at http://192.168.0.1 under Advanced → Security → Services → Add Service.",
+    "reservationPath": "the same Advanced settings screen, where the device is selected before the ports",
+    "source": "https://helpforum.sky.com/t5/Sky-Broadband/Sky-Hub-How-to-Configure-Port-Forwarding/ta-p/707150"
   },
 
   "_default": {

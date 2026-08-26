@@ -53,6 +53,16 @@ type Entry struct {
 	// most common cause of remote access silently dying.
 	ReservationPath string `json:"reservationPath,omitempty"`
 
+	// Source is where this entry's menu path was checked against, so a later
+	// reader can tell a verified path from a remembered one.
+	//
+	// It exists because the first version of this catalogue was written from
+	// memory and looked exactly as confident as a checked one. Confidently
+	// wrong instructions are worse than the generic fallback, which is the
+	// standard this file's own header sets; without somewhere to record
+	// provenance there is no way to hold to it.
+	Source string `json:"source,omitempty"`
+
 	key string
 }
 
