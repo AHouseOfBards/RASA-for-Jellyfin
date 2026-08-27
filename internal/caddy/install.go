@@ -316,3 +316,31 @@ func WriteEnvFile(path string, env map[string]string) error {
 	// is a credential leaked.
 	return os.WriteFile(path, []byte(b.String()), 0o600)
 }
+
+// RequiredModules are the two the generated configuration cannot work without.
+var RequiredModules = []string{"dns.providers.dynu", "http.handlers.rate_limit"}
+
+// MissingModules reports which required modules a Caddy binary lacks.
+//
+// Worth asking early. FindBinary falls back to whatever "caddy" is on PATH,
+// which on a machine that already runs Caddy for something else is a stock
+// build with neither of these in it. Nothing then goes wrong until the
+// configuration is validated, minutes later, after a hostname has been claimed
+// and a DNS record has propagated -- so the same question is asked at startup,
+// where the answer costs nothing and the user has lost nothing.
+//
+// An error means the question could not be asked at all, which is not the same
+// as the modules being absent and must not be reported as if it were.
+func MissingModules(ctx context.Context, binary string) ([]string, error) {
+	out, err := exec.CommandContext(ctx, binary, "list-modules").CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("asking %s which modules it has: %w", binary, err)
+	}
+	var missing []string
+	for _, id := range RequiredModules {
+		if !strings.Contains(string(out), id) {
+			missing = append(missing, id)
+		}
+	}
+	return missing, nil
+}

@@ -20,6 +20,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/caddy"
@@ -56,6 +57,7 @@ func main() {
 		noOpen  = flag.Bool("no-browser", false, "print the wizard's address instead of opening a browser")
 		prod    = flag.Bool("production-certificates", false, "use Let's Encrypt production rather than staging")
 		email   = flag.String("email", "", "optional address for certificate expiry notices")
+		replace = flag.Bool("replace", false, "close any copy of RASA already running instead of asking")
 	)
 	// Before any output. A release build on Windows is linked -H=windowsgui and
 	// has no console of its own; this reattaches to the shell's when there is
@@ -99,6 +101,7 @@ func main() {
 		openWindow: !*noOpen,
 		production: *prod,
 		email:      *email,
+		replace:    *replace,
 	}); err != nil {
 		fatal(err)
 	}
@@ -110,6 +113,7 @@ type options struct {
 	openWindow bool
 	production bool
 	email      string
+	replace    bool
 }
 
 func run(ctx context.Context, o options) error {
@@ -176,18 +180,41 @@ func run(ctx context.Context, o options) error {
 	// register a scheduled task and claim a hostname. The loser stops here,
 	// having bound only a loopback port it is about to release.
 	lock, err := instance.Acquire(layout.LockFile(), srv.Addr())
+
+	// Offer to close the other one rather than only naming it.
+	//
+	// The commonest case by far is a newer RASA being started while an older
+	// one sits in the background with no window, which is most of what testing
+	// a new build looks like. Sending someone to Task Manager for that is a
+	// poor answer.
+	//
+	// Ending a run part-way is safe by construction: every step is idempotent
+	// and state is written as each phase completes, because a wizard has always
+	// had to survive a closed window, a reboot or a power cut. Starting again
+	// resumes from where it stopped.
+	var running *instance.AlreadyRunning
+	if errors.As(err, &running) && (o.replace || askToReplace(running)) {
+		log.Info("closing the copy already running",
+			slog.Int("pid", running.PID), slog.String("addr", running.Addr))
+		if stopErr := instance.Stop(running, 10*time.Second); stopErr != nil {
+			return fmt.Errorf("could not close the copy already running: %w", stopErr)
+		}
+		lock, err = instance.Acquire(layout.LockFile(), srv.Addr())
+	}
+
 	if err != nil {
 		if errors.Is(err, instance.ErrAlreadyRunning) {
-			// Naming Task Manager is not hand-holding, it is the only way out.
-			// A release build shows no console window, so a RASA left running
-			// in the background is invisible: there is nothing to alt-tab to
-			// and nothing to close. Its address is no use either, because the
-			// browser needs the one-time key that went with it, and that key is
-			// deliberately not written anywhere.
+			// Declined, or nothing to ask with. Naming Task Manager is not
+			// hand-holding, it is the only way out: a release build shows no
+			// console window, so a RASA left running in the background is
+			// invisible, and its address is no use either because the browser
+			// needs the one-time key that went with it, which is deliberately
+			// written nowhere.
 			return fmt.Errorf("%w\n\n"+
 				"  Look for the browser tab it opened and finish there.\n\n"+
 				"  If there is no tab, RASA is running in the background with no window.\n"+
-				"  Open Task Manager, end the task called %s, then start setup again.",
+				"  Open Task Manager, end the task called %s, then start setup again.\n"+
+				"  Or start it with -replace to close the other copy automatically.",
 				err, processName())
 		}
 		return err
@@ -285,6 +312,30 @@ func findCaddy(layout paths.Layout, log *logging.Logger) string {
 		log.Warn("no bundled proxy binary was found", slog.Any("err", err))
 		return ""
 	}
+	// Say where it came from, and check it is the right one.
+	//
+	// FindBinary falls back to whatever "caddy" is on PATH, which on a machine
+	// that already runs Caddy for something else is a stock build with neither
+	// module the generated configuration needs. That is caught later, when the
+	// configuration is validated, but "later" is after a hostname has been
+	// claimed and a DNS record has propagated. Asking now costs one process
+	// start and the user has lost nothing yet.
+	log.Info("found a proxy binary", slog.String("path", path))
+	checkCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	switch missing, err := caddy.MissingModules(checkCtx, path); {
+	case err != nil:
+		// Could not ask. Not the same as the modules being absent, so it is not
+		// reported as if it were.
+		log.Warn("could not check the proxy binary's modules", slog.Any("err", err))
+	case len(missing) > 0:
+		log.Warn("the proxy binary is missing modules RASA needs",
+			slog.String("path", path),
+			slog.String("missing", strings.Join(missing, ", ")),
+			slog.String("likely_cause", "this looks like a stock Caddy from the system rather than the one RASA ships"),
+		)
+	}
+
 	// Copied out of the install directory so that uninstalling RASA does not
 	// take the running proxy with it (SPEC.md §3).
 	staged, err := caddy.Stage(path, layout.BinDir())
@@ -419,4 +470,46 @@ func processName() string {
 		return "rasa"
 	}
 	return filepath.Base(exe)
+}
+
+// askToReplace asks whether to close the copy already running.
+//
+// Two ways of asking, because there are two ways of starting: a terminal run
+// gets a prompt, and a double-clicked release build -- which has no console at
+// all -- gets a dialog. Anything else answers no, so an unattended run never
+// silently kills another one; -replace is how a script says yes.
+func askToReplace(running *instance.AlreadyRunning) bool {
+	const question = "RASA is already running.\n\n" +
+		"Close it and start this one instead?\n\n" +
+		"Any setup it was part-way through will carry on from where it stopped."
+
+	if !outputVisible {
+		return ui.Ask("RASA for Jellyfin", question)
+	}
+	if !stdinIsTerminal() {
+		return false
+	}
+
+	fmt.Println()
+	fmt.Println("  RASA is already running (process", running.PID, "at", running.Addr+").")
+	fmt.Println()
+	fmt.Print("  Close it and start this one instead? [y/N] ")
+	var answer string
+	if _, err := fmt.Scanln(&answer); err != nil {
+		return false
+	}
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	return answer == "y" || answer == "yes"
+}
+
+// stdinIsTerminal reports whether there is somebody there to answer.
+//
+// A pipe or a file is not a person: prompting into one blocks forever or reads
+// EOF, and neither is a decision to close somebody else's running install.
+func stdinIsTerminal() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
 }
