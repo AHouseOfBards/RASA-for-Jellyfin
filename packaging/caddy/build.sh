@@ -20,10 +20,29 @@ command -v xcaddy >/dev/null 2>&1 || {
 }
 
 echo "building caddy ${CADDY_VERSION}"
-xcaddy build "${CADDY_VERSION}" \
+
+# Retried, because this step pulls roughly a hundred modules over the network
+# and proxy.golang.org does not always finish handing them over. Observed twice
+# in consecutive runs of the same release: once "verifying module ... reading",
+# once "stream error: INTERNAL_ERROR", each on a different dependency and each
+# a read that simply did not complete.
+#
+# A release that fails on somebody else's flaky CDN is a release that has to be
+# babysat. Downloads that did succeed stay in the module cache, so a second
+# attempt has less to do than the first.
+attempt=1
+until xcaddy build "${CADDY_VERSION}" \
   --with "github.com/caddy-dns/dynu@${DYNU_VERSION}" \
   --with "github.com/mholt/caddy-ratelimit@${RATELIMIT_VERSION}" \
-  --output "$OUT"
+  --output "$OUT"; do
+  if [ "$attempt" -ge 3 ]; then
+    echo "FATAL: the caddy build failed $attempt times" >&2
+    exit 1
+  fi
+  echo "build attempt $attempt failed; retrying in $((attempt * 10))s" >&2
+  sleep "$((attempt * 10))"
+  attempt=$((attempt + 1))
+done
 
 # Prove the modules are present. Catching this here is the whole point: the
 # alternative is discovering it when a user's proxy refuses to start.
