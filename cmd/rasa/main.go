@@ -61,7 +61,7 @@ func main() {
 	// has no console of its own; this reattaches to the shell's when there is
 	// one, so running from a terminal still prints and double-clicking still
 	// shows no window.
-	attachParentConsole()
+	outputVisible = attachParentConsole()
 
 	flag.Parse()
 
@@ -72,8 +72,7 @@ func main() {
 
 	if *diag {
 		if err := runDiagnostics(*root, *withAdr); err != nil {
-			fmt.Fprintln(os.Stderr, "rasa:", err)
-			os.Exit(1)
+			fatal(err)
 		}
 		return
 	}
@@ -84,8 +83,7 @@ func main() {
 	if *root == "" {
 		relaunched, err := ensureElevated()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "rasa:", err)
-			os.Exit(1)
+			fatal(err)
 		}
 		if relaunched {
 			return
@@ -102,8 +100,7 @@ func main() {
 		production: *prod,
 		email:      *email,
 	}); err != nil {
-		fmt.Fprintln(os.Stderr, "rasa:", err)
-		os.Exit(1)
+		fatal(err)
 	}
 }
 
@@ -181,7 +178,17 @@ func run(ctx context.Context, o options) error {
 	lock, err := instance.Acquire(layout.LockFile(), srv.Addr())
 	if err != nil {
 		if errors.Is(err, instance.ErrAlreadyRunning) {
-			return fmt.Errorf("%w\n\n  Finish or close that one first. If you cannot find it,\n  close RASA everywhere and start it again", err)
+			// Naming Task Manager is not hand-holding, it is the only way out.
+			// A release build shows no console window, so a RASA left running
+			// in the background is invisible: there is nothing to alt-tab to
+			// and nothing to close. Its address is no use either, because the
+			// browser needs the one-time key that went with it, and that key is
+			// deliberately not written anywhere.
+			return fmt.Errorf("%w\n\n"+
+				"  Look for the browser tab it opened and finish there.\n\n"+
+				"  If there is no tab, RASA is running in the background with no window.\n"+
+				"  Open Task Manager, end the task called %s, then start setup again.",
+				err, processName())
 		}
 		return err
 	}
@@ -377,4 +384,39 @@ func bundle(layout paths.Layout, log *logging.Logger, includeAddresses bool) err
 func dirExists(p string) bool {
 	fi, err := os.Stat(p)
 	return err == nil && fi.IsDir()
+}
+
+// outputVisible records whether anything printed will actually be seen.
+//
+// A release build on Windows is linked -H=windowsgui and, started by
+// double-click, has no console at all. Every fmt.Fprintln to stderr on a fatal
+// path then writes to an invalid handle and disappears, so the program exits
+// non-zero having said nothing. The user double-clicks and watches nothing
+// happen.
+var outputVisible = true
+
+// fatal reports an error and exits.
+//
+// It prints, always, because a terminal run should read normally. Where there
+// is no terminal it also raises a dialog, because "exited quietly with status
+// 1" is not a way to tell somebody their setup did not start.
+func fatal(err error) {
+	fmt.Fprintln(os.Stderr, "rasa:", err)
+	if !outputVisible {
+		ui.Notify("RASA for Jellyfin", err.Error())
+	}
+	os.Exit(1)
+}
+
+// processName is what this program is called in a task list, so the
+// already-running message can name the thing to end rather than describing it.
+func processName() string {
+	exe, err := os.Executable()
+	if err != nil {
+		if runtime.GOOS == "windows" {
+			return "rasa.exe"
+		}
+		return "rasa"
+	}
+	return filepath.Base(exe)
 }

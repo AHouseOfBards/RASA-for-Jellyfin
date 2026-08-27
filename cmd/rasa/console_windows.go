@@ -19,7 +19,7 @@ import (
 // there is no parent console, the call fails, and nothing appears -- which is
 // the outcome we wanted. One binary, both behaviours, decided by how it was
 // started rather than by a flag anyone has to know about.
-func attachParentConsole() {
+func attachParentConsole() bool {
 	// Redirection wins, and must be checked first.
 	//
 	// `rasa --version > out.txt` hands this process a file handle, which Go
@@ -27,7 +27,7 @@ func attachParentConsole() {
 	// that writes to the console instead and leaves the file empty. Measured:
 	// exactly that, before this check existed.
 	if usableStdout() {
-		return
+		return true
 	}
 
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
@@ -36,14 +36,16 @@ func attachParentConsole() {
 	// ATTACH_PARENT_PROCESS is (DWORD)-1.
 	const attachParentProcess = ^uintptr(0)
 	if r, _, _ := attachConsole.Call(attachParentProcess); r == 0 {
-		return // Started without a console. Nothing to write to, by design.
+		return false // Started without a console. Nothing to write to, by design.
 	}
 
 	// CONOUT$ and CONIN$ always name the attached console.
 	if out, err := os.OpenFile("CONOUT$", os.O_WRONLY, 0); err == nil {
 		os.Stdout = out
 		os.Stderr = out
+		return true
 	}
+	return false
 }
 
 // usableStdout reports whether this process was given somewhere to write.
