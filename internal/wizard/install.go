@@ -134,6 +134,10 @@ func (w *Wizard) publishAddress(ctx context.Context) error {
 	dom, err := w.claim(ctx, dyn, hostname, res)
 	if err != nil {
 		w.step(SetupAddress, StepFailed, "")
+		if dynu.IsQuotaExhausted(err) {
+			w.update(func(m *Model) { m.Screen = ScreenName })
+			return w.fail("domain", w.quotaExhausted(ctx, dyn, err))
+		}
 		if isTaken(err) {
 			w.update(func(m *Model) { m.Screen = ScreenName })
 			label, parent, _ := w.opts.Catalog.Split(hostname)

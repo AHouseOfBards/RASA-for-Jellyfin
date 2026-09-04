@@ -306,6 +306,25 @@ func (c *Client) registerTokens(ds []Domain) {
 	}
 }
 
+// Dynu's own exception codes.
+//
+// These are application-level codes carried in the response envelope, and they
+// sit in the HTTP 5xx range without meaning anything like it. 503 here is "you
+// have used your quota", not "the service is unavailable" — and every one of
+// them describes the request, so retrying sends the identical request and gets
+// the identical answer.
+const (
+	// StatusArgument is a malformed or unknown argument. Also what a delete
+	// of an id that does not exist returns.
+	StatusArgument = 501
+	// StatusQuota is the account limit. Dynu's free tier allows four
+	// hostnames, and the fifth create attempt lands here.
+	StatusQuota = 503
+	// StatusValidation is a value the API will not accept — most often a
+	// hostname that already exists on somebody else's account.
+	StatusValidation = 505
+)
+
 // APIError is a non-success response from Dynu.
 type APIError struct {
 	StatusCode int
@@ -313,6 +332,37 @@ type APIError struct {
 	Message    string
 	Method     string
 	Path       string
+
+	// FromEnvelope records that StatusCode came out of Dynu's JSON body
+	// rather than the HTTP status line. It is what separates their 503
+	// ("your account is full") from a real HTTP 503 ("try again shortly"),
+	// which is the difference between explaining a wall and retrying into it.
+	FromEnvelope bool
+}
+
+// IsQuotaExhausted reports whether Dynu refused because the account has no
+// room for another hostname.
+//
+// Exported so callers can produce copy that names the real problem. Without
+// it, an account at its free-tier limit fails with a generic API error, and
+// the user is told their name could not be registered with no hint that the
+// fix is to delete one they already own.
+func IsQuotaExhausted(err error) bool {
+	var ae *APIError
+	return errors.As(err, &ae) && ae.FromEnvelope && ae.StatusCode == StatusQuota
+}
+
+// IsNameUnavailable reports whether Dynu refused a hostname because it is not
+// available to this account.
+func IsNameUnavailable(err error) bool {
+	var ae *APIError
+	if !errors.As(err, &ae) {
+		return false
+	}
+	// A name Dynu will not hand over comes back as 501 or 505 depending on
+	// whether it exists at all or exists on another account. Both mean the
+	// same thing to the user.
+	return ae.StatusCode == StatusArgument || ae.StatusCode == StatusValidation
 }
 
 func (e *APIError) Error() string {
@@ -321,7 +371,20 @@ func (e *APIError) Error() string {
 
 // retryable reports whether another attempt could plausibly succeed.
 func (e *APIError) retryable() bool {
-	return e.StatusCode == http.StatusTooManyRequests || e.StatusCode >= 500
+	if e.StatusCode == http.StatusTooManyRequests {
+		return true
+	}
+	// Dynu's application exceptions are deterministic answers about the
+	// request, so retrying only delays the real message: three attempts with
+	// backoff before telling a user their name is taken, or their account is
+	// full, is time spent proving what the first answer already said.
+	if e.FromEnvelope {
+		switch e.StatusCode {
+		case StatusArgument, StatusQuota, StatusValidation:
+			return false
+		}
+	}
+	return e.StatusCode >= 500
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
@@ -425,11 +488,12 @@ func (c *Client) attempt(ctx context.Context, method, path string, payload []byt
 	if len(raw) > 0 && json.Unmarshal(raw, &env) == nil {
 		if env.StatusCode != 0 && (env.StatusCode < 200 || env.StatusCode >= 300) {
 			return &APIError{
-				StatusCode: env.StatusCode,
-				Type:       env.Type,
-				Message:    env.Message,
-				Method:     method,
-				Path:       path,
+				StatusCode:   env.StatusCode,
+				Type:         env.Type,
+				Message:      env.Message,
+				Method:       method,
+				Path:         path,
+				FromEnvelope: true,
 			}
 		}
 	}
@@ -455,6 +519,7 @@ func apiErrorFrom(status int, raw []byte, method, path string) *APIError {
 		}
 		if env.StatusCode != 0 {
 			e.StatusCode = env.StatusCode
+			e.FromEnvelope = true
 		}
 	}
 	return e

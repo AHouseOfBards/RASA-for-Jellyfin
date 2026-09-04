@@ -17,6 +17,9 @@ const DYNU_SIGNUP = "https://www.dynu.com/en-US/ControlPanel/CreateAccount";
 // API Credentials" themselves. Signed out this redirects to the login page
 // carrying a ReturnUrl back here, so signing in lands on the right page.
 const DYNU_API_KEYS = "https://www.dynu.com/en-US/ControlPanel/APICredentials";
+// Where a full account is emptied. Offered when Dynu refuses a new address
+// because the free allowance is used up.
+const DYNU_DDNS = "https://www.dynu.com/en-US/ControlPanel/DDNS";
 
 /* The six steps, in order.
  *
@@ -223,9 +226,28 @@ function renderSteps(id, steps) {
   }
 }
 
+/* A screen may host the problem itself rather than sending the user to the
+ * blocked screen — the name picker does, because its failures are answered by
+ * editing the field that is already on screen. Both boxes are cleared every
+ * render so an error never lingers on a screen it did not belong to. */
+function problemBox() {
+  const screen = (model && model.screen) || "";
+  const own = document.getElementById(screen + "-problem");
+  if (own) {
+    return [own, document.getElementById(screen + "-problem-actions")];
+  }
+  return [
+    document.getElementById("blocked-problem"),
+    document.getElementById("blocked-problem-actions"),
+  ];
+}
+
 function renderProblem(err) {
-  const box = document.getElementById("blocked-problem");
-  box.replaceChildren();
+  for (const id of ["blocked-problem", "blocked-problem-actions",
+                    "name-problem", "name-problem-actions"]) {
+    document.getElementById(id).replaceChildren();
+  }
+  const [box, actions] = problemBox();
   if (!err) return;
 
   const msg = document.createElement("p");
@@ -246,8 +268,6 @@ function renderProblem(err) {
     box.appendChild(partial);
   }
 
-  const actions = document.getElementById("blocked-actions");
-  actions.replaceChildren();
   for (const a of err.actions || []) {
     const b = document.createElement("button");
     b.className = a.kind === "retry" ? "primary" : "secondary";
@@ -259,8 +279,16 @@ function renderProblem(err) {
 
 /* An action's meaning depends on where setup stopped, which the model already
  * knows. Retry re-runs the step that failed rather than starting over, because
- * starting over is exactly what a user with a slow DNS provider does not need. */
+ * starting over is exactly what a user with a slow DNS provider does not need.
+ *
+ * A few actions mean the same thing wherever they appear, and those are matched
+ * by id first — sending someone who asked to open Dynu back to the name box
+ * instead is worse than not offering the button. */
 function handleAction(action) {
+  if (action.id === "open_dynu") {
+    window.open(DYNU_DDNS, "_blank", "noopener");
+    return;
+  }
   switch (model && model.screen) {
     case "blocked":
       post("/api/start");

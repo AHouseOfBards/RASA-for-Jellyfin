@@ -37,6 +37,7 @@ const testKey = "dynu-api-key-that-must-never-appear-anywhere"
 type fakeDynu struct {
 	created     []dynu.CreateDomainRequest
 	createFn    func(dynu.CreateDomainRequest) (*dynu.Domain, error)
+	domains     []dynu.Domain
 	listErr     error
 	deleted     int
 	unpublished int
@@ -52,7 +53,7 @@ func (f *fakeDynu) DeleteDomain(ctx context.Context, id int64) error {
 }
 
 func (f *fakeDynu) ListDomains(ctx context.Context) ([]dynu.Domain, error) {
-	return nil, f.listErr
+	return f.domains, f.listErr
 }
 func (f *fakeDynu) FindDomain(ctx context.Context, name string) (*dynu.Domain, error) {
 	return nil, &dynu.APIError{StatusCode: 501}

@@ -17,7 +17,6 @@ const (
 	KeyEnableUPnP         = "EnableUPnP"
 	KeyBaseURL            = "BaseUrl"
 	KeyRequireHTTPS       = "RequireHttps"
-	KeyEnableHTTPS        = "EnableHttps"
 
 	// Jellyfin's own allow/deny list for remote clients. RASA reads it and
 	// never writes it: it is a security decision the user made deliberately,
@@ -123,6 +122,11 @@ func (c *Client) Apply(ctx context.Context, s Settings) (*Result, error) {
 
 	// TLS terminates at the proxy. Leaving Jellyfin's own HTTPS on alongside
 	// it produces a redirect loop.
+	//
+	// Only RequireHttps is touched, deliberately. Jellyfin's other TLS key,
+	// EnableHttps, merely opens its own HTTPS listener on a separate port;
+	// RASA proxies to the HTTP port and never reaches it, so turning it off
+	// would change a user's setting to no effect.
 	if asBool(cfg[KeyRequireHTTPS]) {
 		res.Changes = append(res.Changes, Change{Key: KeyRequireHTTPS, From: "true", To: "false"})
 		cfg[KeyRequireHTTPS] = false

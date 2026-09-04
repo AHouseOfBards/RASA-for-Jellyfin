@@ -66,7 +66,7 @@
     <section class="screen" data-screen="blocked">
       <h1 id="blocked-title">Setup can't continue yet</h1>
       <div class="problem" id="blocked-problem"></div>
-      <div class="actions" id="blocked-actions"></div>
+      <div class="actions" id="blocked-problem-actions"></div>
     </section>
 
     <!-- Journey step 6 -->
@@ -159,6 +159,13 @@
           <button class="primary" type="submit" id="name-submit">Use this address</button>
         </div>
       </form>
+
+      <!-- Some refusals cannot be answered by typing a different name. A full
+           Dynu account is the one that matters: the fix is to reuse or delete
+           an address, and a status line with no room for the list of what is
+           already up there leaves the user with nothing to act on. -->
+      <div class="problem" id="name-problem"></div>
+      <div class="actions" id="name-problem-actions"></div>
 
       <!-- Claiming creates the hostname on the user's real Dynu account and
            moves straight on. There is no undo inside RASA and the free plan

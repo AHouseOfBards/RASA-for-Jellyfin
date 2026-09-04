@@ -366,6 +366,10 @@ button:disabled { opacity: 0.5; cursor: default; }
 }
 
 .problem { border-left: 4px solid var(--bad); }
+/* A screen that hosts its own problem box keeps the element in the page and
+   fills it only when something failed. Without this the name picker shows an
+   empty bordered card under the field on every visit. */
+.problem:empty, .actions:empty { display: none; }
 .problem .why { color: var(--ink-soft); margin: 8px 0 0; }
 .problem .partial { color: var(--ink-soft); font-size: 14px; margin: 10px 0 0; }
 

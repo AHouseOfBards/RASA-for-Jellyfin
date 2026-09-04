@@ -1,6 +1,9 @@
 package rasaerr
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // The catalogue. Every failure RASA can show a user lives here, so the copy is
 // reviewable in one place and no call site invents its own wording.
@@ -23,6 +26,7 @@ const (
 	CodeHostnameTaken       Code = "hostname_taken"
 	CodeBlockedParentDomain Code = "blocked_parent_domain"
 	CodeDynuAuth            Code = "dynu_auth_rejected"
+	CodeDynuQuotaExhausted  Code = "dynu_quota_exhausted"
 	CodeNoRouteToInternet   Code = "no_route_to_internet"
 	CodeInvalidHostname     Code = "invalid_hostname"
 )
@@ -212,6 +216,57 @@ func DynuAuthRejected(cause error) *Error {
 		Detail:  "Dynu API rejected the supplied key",
 		wrapped: cause,
 	}
+}
+
+// DynuQuotaExhausted covers an account with no room for another hostname.
+//
+// The free tier allows four. Nothing in the API reports the limit, so the copy
+// deliberately does not name a number — it says the account is full, which is
+// what Dynu actually told us, and then does the one thing that makes the
+// message actionable: lists the names already on the account. A user who has
+// forgotten what is up there cannot decide what to delete, and someone
+// re-running setup usually wants one of these names anyway rather than a new
+// one, which is why reusing is offered first.
+//
+// existing may be empty; the copy holds together either way.
+func DynuQuotaExhausted(existing []string, cause error) *Error {
+	why := "Dynu's free accounts hold a limited number of addresses and yours has no room left. "
+	switch len(existing) {
+	case 0:
+		why += "Delete an address you no longer need at dynu.com, under DDNS Services, then try again."
+	case 1:
+		why += "Your account already has " + existing[0] +
+			". Type that name here to point it at this server, or delete it at dynu.com under DDNS Services to free up room for a new one."
+	default:
+		why += "Your account already has " + joinNames(existing) +
+			". Type one of those names here to point it at this server, or delete one at dynu.com under DDNS Services to free up room for a new one."
+	}
+	return &Error{
+		Code:    CodeDynuQuotaExhausted,
+		Message: "Your Dynu account is full.",
+		Why:     why,
+		Actions: []Action{
+			{ID: "rename", Label: "Use a different name", Kind: ActionAlternate},
+			{ID: "open_dynu", Label: "Open Dynu", Kind: ActionExternal},
+			{ID: "retry", Label: "Try again", Kind: ActionRetry},
+		},
+		Detail:  fmt.Sprintf("Dynu refused the hostname for quota, account holds %d name(s)", len(existing)),
+		wrapped: cause,
+	}
+}
+
+// joinNames renders a list the way a sentence needs it rather than the way a
+// log does, because this one is read aloud in the user's head.
+func joinNames(names []string) string {
+	switch len(names) {
+	case 0:
+		return ""
+	case 1:
+		return names[0]
+	case 2:
+		return names[0] + " and " + names[1]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 // NoRouteToInternet is the pre-flight failure where nothing else can proceed.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/netip"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -797,6 +798,13 @@ func (w *Wizard) ClaimName(ctx context.Context, label, parent string) error {
 
 	dom, err := w.claim(ctx, dyn, hostname, res)
 	if err != nil {
+		// Quota is checked before "taken": both refuse the name, but only one
+		// of them is fixed by picking a different one, and offering
+		// suggestions to somebody whose account is full sends them round the
+		// same wall four more times.
+		if dynu.IsQuotaExhausted(err) {
+			return w.fail("domain", w.quotaExhausted(ctx, dyn, err))
+		}
 		if isTaken(err) {
 			return w.fail("domain", rasaerr.HostnameTaken(hostname, w.suggest(label, parent)))
 		}
@@ -840,15 +848,31 @@ func (w *Wizard) suggest(label, parent string) []string {
 }
 
 // isTaken recognises Dynu's answer to a name somebody else owns.
-func isTaken(err error) bool {
-	var ae *dynu.APIError
-	if !errors.As(err, &ae) {
-		return false
+func isTaken(err error) bool { return dynu.IsNameUnavailable(err) }
+
+// quotaExhausted builds the account-is-full failure, naming the hostnames the
+// user already has.
+//
+// The list is what makes the message actionable. Dynu's free tier allows four
+// addresses and says nothing about which ones you are using, so a user who set
+// this up months ago — or who has been testing — is told their account is full
+// with no idea what is in it. Listing the names also surfaces the shortcut
+// most people want: typing a name they already own updates it in place rather
+// than needing a slot at all.
+//
+// The lookup is best effort. It has just failed once, and a second failure
+// must not replace a precise message with a vague one.
+func (w *Wizard) quotaExhausted(ctx context.Context, dyn DynuAPI, cause error) error {
+	var names []string
+	if ds, err := dyn.ListDomains(ctx); err == nil {
+		for _, d := range ds {
+			names = append(names, d.Name)
+		}
+		sort.Strings(names)
+	} else {
+		w.log.Warn("could not list existing hostnames for the quota message", slog.Any("err", err))
 	}
-	// Dynu answers a name it will not give you with 501 or 505 depending on
-	// whether it exists at all or exists on another account. Both mean the
-	// same thing to the user.
-	return ae.StatusCode == 501 || ae.StatusCode == 505
+	return rasaerr.DynuQuotaExhausted(names, cause)
 }
 
 // publicURL renders the address a browser should be pointed at, including the

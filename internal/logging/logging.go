@@ -13,8 +13,6 @@ import (
 	"encoding/hex"
 	"io"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"sync"
 )
 
@@ -88,6 +86,13 @@ type Options struct {
 	Redactor *Redactor
 	// EventBuffer sizes the Events channel. Zero disables events.
 	EventBuffer int
+
+	// MaxBytes is the size at which Open rolls the file. Zero uses
+	// DefaultMaxBytes; it is ignored by New, which does not own the writer.
+	MaxBytes int64
+	// Keep is how many rolled files Open retains. Zero uses DefaultKeep;
+	// a negative value keeps none.
+	Keep int
 }
 
 // New builds a Logger. Every line it writes passes through the Redactor first.
@@ -112,15 +117,22 @@ func New(opts Options) *Logger {
 	return l
 }
 
-// Open creates or appends to path and returns a Logger writing to it.
+// Open appends to path and returns a Logger writing to it, rolling the file
+// once it passes Options.MaxBytes.
 //
-// The log is opened in append mode and never truncated: a user may run RASA
-// several times, and the run id is what separates those runs in the bundle.
+// The log is appended to rather than truncated: a user may run RASA several
+// times, and the run id is what separates those runs in the bundle. Rolling is
+// what keeps that from being unbounded — see rotate.go for why one of these
+// logs is written by something that never stops.
 func Open(path string, opts Options) (*Logger, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, err
+	max, keep := opts.MaxBytes, opts.Keep
+	if max == 0 {
+		max = DefaultMaxBytes
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if keep == 0 {
+		keep = DefaultKeep
+	}
+	f, err := openRotating(path, max, keep)
 	if err != nil {
 		return nil, err
 	}
