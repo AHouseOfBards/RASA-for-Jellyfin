@@ -79,6 +79,9 @@ func (e *Escalator) Consider(ctx context.Context, r Report) error {
 	last := e.load()
 	sig := r.Signature()
 
+	var level AlertLevel
+	var subject, body string
+
 	switch {
 	case sig == "ok":
 		// Silence is the right answer unless the user was told there was a
@@ -86,30 +89,37 @@ func (e *Escalator) Consider(ctx context.Context, r Report) error {
 		if last.Signature == "" || last.Signature == "ok" {
 			return nil
 		}
-		if err := e.raise(ctx, LevelInfo,
-			"Remote access to Jellyfin is working again.",
-			"RASA checked "+r.Hostname+" and everything it reported earlier has cleared."); err != nil {
-			return err
-		}
+		level = LevelInfo
+		subject = "Remote access to Jellyfin is working again."
+		body = "RASA checked " + r.Hostname + " and everything it reported earlier has cleared."
 
 	case sig != last.Signature:
 		// Something new broke, or a different thing broke. Say so now.
-		if err := e.raise(ctx, LevelError,
-			"Remote access to Jellyfin has stopped working.", r.Alert()); err != nil {
-			return err
-		}
+		level = LevelError
+		subject = "Remote access to Jellyfin has stopped working."
+		body = r.Alert()
 
 	case now().Sub(last.Raised) >= repeat:
-		if err := e.raise(ctx, LevelError,
-			"Remote access to Jellyfin is still not working.", r.Alert()); err != nil {
-			return err
-		}
+		level = LevelError
+		subject = "Remote access to Jellyfin is still not working."
+		body = r.Alert()
 
 	default:
 		return nil
 	}
 
-	return e.save(escalationState{Signature: sig, Raised: now()})
+	raiseErr := e.raise(ctx, level, subject, body)
+
+	// Recorded whether or not the channel accepted it, and before the error is
+	// returned. A machine that will not take an event log entry — an
+	// unelevated developer run, a locked-down host — would otherwise retry
+	// every ten minutes forever, which is the noise this whole mechanism
+	// exists to avoid, just moved somewhere the user cannot see it. The health
+	// file is the channel that always works; this one is the escalation.
+	if err := e.save(escalationState{Signature: sig, Raised: now()}); err != nil && raiseErr == nil {
+		return err
+	}
+	return raiseErr
 }
 
 func (e *Escalator) raise(ctx context.Context, l AlertLevel, subject, body string) error {

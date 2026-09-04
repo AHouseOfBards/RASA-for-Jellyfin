@@ -285,3 +285,35 @@ func TestCheckProxyStillReadsAnExpiredCertificate(t *testing.T) {
 		t.Error("the expiry date was not read back")
 	}
 }
+
+// A machine that will not accept an event log entry — an unelevated run, a
+// locked-down host — must not turn into a retry every ten minutes. The health
+// file is the channel that always works; this one is the escalation.
+func TestAnAlertChannelThatRefusesIsNotRetriedEveryRun(t *testing.T) {
+	s := &spy{err: errRefused}
+	clock := now()
+	e := escalator(t, s, &clock)
+
+	// The refusal is reported to the caller, which is what puts it in the
+	// sync log rather than swallowing it.
+	if err := e.Consider(context.Background(), report(bad("proxy"))); err == nil {
+		t.Fatal("a refused alert was not reported to the caller")
+	}
+	clock = clock.Add(10 * time.Minute)
+
+	for i := 0; i < 35; i++ { // the rest of six hours
+		if err := e.Consider(context.Background(), report(bad("proxy"))); err != nil {
+			t.Fatalf("run %d: %v", i+2, err)
+		}
+		clock = clock.Add(10 * time.Minute)
+	}
+	if len(s.sent) != 1 {
+		t.Errorf("attempted %d alerts in six hours against a refusing channel, want 1", len(s.sent))
+	}
+}
+
+var errRefused = &refusedErr{}
+
+type refusedErr struct{}
+
+func (*refusedErr) Error() string { return "eventcreate: access is denied" }

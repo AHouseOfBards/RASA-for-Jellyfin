@@ -226,26 +226,30 @@ function renderSteps(id, steps) {
   }
 }
 
-/* A screen may host the problem itself rather than sending the user to the
- * blocked screen — the name picker does, because its failures are answered by
- * editing the field that is already on screen. Both boxes are cleared every
- * render so an error never lingers on a screen it did not belong to. */
+/* Screens that host a problem box of their own rather than sending the user to
+ * the blocked screen. The name picker does, because its failures are answered
+ * by editing the field that is already on screen.
+ *
+ * Each entry needs "<name>-problem" and "<name>-problem-actions" in the page.
+ * One list rather than two, so a screen cannot be cleared without being
+ * renderable or the other way round. */
+const PROBLEM_SCREENS = ["blocked", "name"];
+
 function problemBox() {
   const screen = (model && model.screen) || "";
-  const own = document.getElementById(screen + "-problem");
-  if (own) {
-    return [own, document.getElementById(screen + "-problem-actions")];
-  }
+  const name = PROBLEM_SCREENS.includes(screen) ? screen : "blocked";
   return [
-    document.getElementById("blocked-problem"),
-    document.getElementById("blocked-problem-actions"),
+    document.getElementById(name + "-problem"),
+    document.getElementById(name + "-problem-actions"),
   ];
 }
 
 function renderProblem(err) {
-  for (const id of ["blocked-problem", "blocked-problem-actions",
-                    "name-problem", "name-problem-actions"]) {
-    document.getElementById(id).replaceChildren();
+  // Every box is cleared, not just this screen's, so an error never lingers on
+  // a screen it did not belong to.
+  for (const name of PROBLEM_SCREENS) {
+    document.getElementById(name + "-problem").replaceChildren();
+    document.getElementById(name + "-problem-actions").replaceChildren();
   }
   const [box, actions] = problemBox();
   if (!err) return;
