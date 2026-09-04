@@ -83,6 +83,12 @@ Everything RASA did is written to a text file when it finishes:
 `C:\ProgramData\RASA\remote-access-info.txt` on Windows, or `/var/lib/rasa` on Linux. It
 has your address, your port forwarding details, and where to find the logs.
 
+In the same folder, `last-sync.txt` says whether remote access is working *now*. It is
+rewritten every ten minutes, and it checks two things: that your address still points at
+your home, and that the secure connection is answering with a certificate that is not
+about to run out. If something breaks months from now, that file will say so, and it will
+also put an entry in the Windows Event Log so you find out without going looking.
+
 The logs are in the same folder. If the security certificate failed, `caddy.log` is the one
 to read.
 

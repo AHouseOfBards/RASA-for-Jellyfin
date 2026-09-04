@@ -123,8 +123,15 @@ func TestWaitForAReturnsWhenRecordAppears(t *testing.T) {
 	want := netip.MustParseAddr("203.0.113.5")
 
 	// The record shows up partway through polling — the real scenario.
+	//
+	// Gated on polling having actually started rather than on a sleep. A sleep
+	// races the first query: under load it can finish first, the very first
+	// lookup succeeds, and the assertion below then fails while nothing is
+	// wrong with the code being tested.
 	go func() {
-		time.Sleep(200 * time.Millisecond)
+		for f.queries.Load() < 2 {
+			time.Sleep(5 * time.Millisecond)
+		}
 		f.setA(want)
 	}()
 

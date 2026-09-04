@@ -78,9 +78,20 @@ func Render(info Info) string {
 		fmt.Fprintf(&b, "  Installed as %s.\n\n", info.ServiceMechanism)
 	}
 	b.WriteString("  1. A secure proxy (Caddy) that handles the connection and\n")
-	b.WriteString("     renews its own security certificate. Nothing to maintain.\n\n")
+	b.WriteString("     renews its own security certificate. Nothing to maintain.\n")
+	if st != nil && !st.CertExpiry.IsZero() {
+		// Recorded at setup, so it is what was true then rather than now — the
+		// health file below is the live answer. It is here because the
+		// certificate is the part people worry about, and a real date is more
+		// reassuring than being told not to worry.
+		fmt.Fprintf(&b, "     The certificate issued during setup runs to %s,\n",
+			st.CertExpiry.Format("2 January 2006"))
+		b.WriteString("     and renewal starts a month before that on its own.\n")
+	}
+	b.WriteString("\n")
 	b.WriteString("  2. A scheduled task that keeps your address pointed at this\n")
-	b.WriteString("     connection when your internet provider changes it.\n\n")
+	b.WriteString("     connection, and checks every ten minutes that remote\n")
+	b.WriteString("     access is still working.\n\n")
 	b.WriteString("  3. Settings written into Jellyfin itself.\n\n")
 
 	if st != nil && len(st.Warnings) > 0 {
@@ -101,24 +112,25 @@ func Render(info Info) string {
 	}
 
 	b.WriteString(rule + "\n  IF REMOTE ACCESS STOPS WORKING\n" + rule + "\n\n")
-	b.WriteString("  Check these three things, in order:\n\n")
-	b.WriteString("  1. Did your router restart recently?\n")
-	b.WriteString("     Some routers forget port forwarding when they restart.\n")
-	b.WriteString("     Re-enter the router settings above.\n\n")
-	b.WriteString("  2. Is the address still up to date?\n")
-	fmt.Fprintf(&b, "     Open: %s\n", info.Layout.LastSyncFile())
-	b.WriteString("     It shows when the address was last checked. If the date\n")
-	b.WriteString("     is old or it says FAILED, the scheduled task has stopped.\n\n")
-	b.WriteString("  3. Is the proxy still running?\n")
-	fmt.Fprintf(&b, "     Its log is at: %s\n\n", info.Layout.CaddyLog())
-	b.WriteString("  Re-running the RASA setup app fixes all three. It will detect\n")
-	b.WriteString("  what is already set up and repair only what is broken.\n\n")
+	b.WriteString("  Start here. This file is rewritten every ten minutes and\n")
+	b.WriteString("  says whether everything is still working:\n\n")
+	fmt.Fprintf(&b, "     %s\n\n", info.Layout.LastSyncFile())
+	b.WriteString("  It checks your address and the secure connection, and names\n")
+	b.WriteString("  anything that is wrong. A date at the top that is hours old\n")
+	b.WriteString("  means the check itself has stopped running.\n\n")
+	b.WriteString("  The one thing it cannot see is your router. If it says\n")
+	b.WriteString("  everything is working and you still cannot connect from\n")
+	b.WriteString("  outside, the likeliest cause is that your router restarted\n")
+	b.WriteString("  and forgot the port forwarding. Re-enter the settings above.\n\n")
+	fmt.Fprintf(&b, "  The proxy's own log is at:\n     %s\n\n", info.Layout.CaddyLog())
+	b.WriteString("  Re-running the RASA setup app fixes all of this. It will\n")
+	b.WriteString("  detect what is already set up and repair only what is broken.\n\n")
 
 	b.WriteString(rule + "\n  FILES AND LOGS\n" + rule + "\n\n")
 	fmt.Fprintf(&b, "  Setup log:     %s\n", info.Layout.RASALog())
 	fmt.Fprintf(&b, "  Proxy log:     %s\n", info.Layout.CaddyLog())
 	fmt.Fprintf(&b, "  Address sync:  %s\n", info.Layout.SyncLog())
-	fmt.Fprintf(&b, "  Last sync:     %s\n", info.Layout.LastSyncFile())
+	fmt.Fprintf(&b, "  Health check:  %s\n", info.Layout.LastSyncFile())
 	fmt.Fprintf(&b, "  Setup record:  %s\n\n", info.Layout.StateFile())
 	b.WriteString("  These are kept on purpose when RASA is uninstalled — they are\n")
 	b.WriteString("  what makes a problem diagnosable later.\n\n")

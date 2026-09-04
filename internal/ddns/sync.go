@@ -2,7 +2,7 @@
 //
 // This is the third job from SPEC.md §3 that must keep working after RASA is
 // removed. It is a command run on a timer, not a daemon: it wakes, compares,
-// updates only if needed, writes a heartbeat, and exits.
+// updates only if needed, reports what it found, and exits.
 package ddns
 
 import (
@@ -10,8 +10,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/netip"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/dynu"
@@ -30,27 +28,29 @@ type Outcome struct {
 }
 
 // Syncer performs one address check.
+//
+// It reports what it found and writes nothing. Recording the run is the
+// caller's job, because the address is only one of the things that has to keep
+// working and a file describing just this half would answer "is remote access
+// still up?" with half an answer — see internal/health.
 type Syncer struct {
 	Client   *dynu.Client
 	Hostname string
-	// HeartbeatPath receives a record of every run, successful or not.
-	HeartbeatPath string
-	Log           *logging.Logger
+	Log      *logging.Logger
 
 	internet *probe.InternetProber
 }
 
 // New returns a Syncer.
-func New(client *dynu.Client, hostname, heartbeatPath string, log *logging.Logger) *Syncer {
+func New(client *dynu.Client, hostname string, log *logging.Logger) *Syncer {
 	if log == nil {
 		log = logging.Discard()
 	}
 	return &Syncer{
-		Client:        client,
-		Hostname:      hostname,
-		HeartbeatPath: heartbeatPath,
-		Log:           log,
-		internet:      probe.NewInternetProber(log),
+		Client:   client,
+		Hostname: hostname,
+		Log:      log,
+		internet: probe.NewInternetProber(log),
 	}
 }
 
@@ -62,7 +62,6 @@ func New(client *dynu.Client, hostname, heartbeatPath string, log *logging.Logge
 // the record points somewhere wrong — and nothing would ever correct it.
 func (s *Syncer) RunOnce(ctx context.Context) Outcome {
 	out := Outcome{Checked: time.Now().UTC()}
-	defer func() { s.writeHeartbeat(out) }()
 
 	net := s.internet.Probe(ctx)
 	if !net.Reachable {
@@ -112,47 +111,4 @@ func changed(d *dynu.Domain, net probe.Internet) bool {
 		}
 	}
 	return false
-}
-
-// writeHeartbeat records the run.
-//
-// SPEC.md §15: a scheduled task that quietly fails for six months is the most
-// plausible silent failure in this design. Writing on *every* run, successes
-// included, is what makes "is this still working?" answerable by opening one
-// file with no tooling and no RASA.
-func (s *Syncer) writeHeartbeat(o Outcome) {
-	if s.HeartbeatPath == "" {
-		return
-	}
-	status := "unchanged"
-	switch {
-	case o.Err != nil:
-		status = "FAILED"
-	case o.Updated:
-		status = "updated"
-	}
-
-	var b []byte
-	b = fmt.Appendf(b, "RASA address sync\n")
-	b = fmt.Appendf(b, "last run:  %s\n", o.Checked.Format(time.RFC3339))
-	b = fmt.Appendf(b, "result:    %s\n", status)
-	b = fmt.Appendf(b, "hostname:  %s\n", s.Hostname)
-	if o.IPv4.IsValid() {
-		b = fmt.Appendf(b, "IPv4:      %s\n", o.IPv4)
-	}
-	if o.IPv6.IsValid() {
-		b = fmt.Appendf(b, "IPv6:      %s\n", o.IPv6)
-	}
-	if o.Err != nil {
-		b = fmt.Appendf(b, "error:     %s\n", o.Err)
-		b = fmt.Appendf(b, "\nIf this keeps failing, remote access will stop working when your\n")
-		b = fmt.Appendf(b, "internet address next changes. Re-run the RASA setup app to fix it.\n")
-	}
-
-	if err := os.MkdirAll(filepath.Dir(s.HeartbeatPath), 0o755); err != nil {
-		return
-	}
-	// Best effort by design: a heartbeat that cannot be written must never
-	// turn a successful sync into a failure.
-	_ = os.WriteFile(s.HeartbeatPath, b, 0o644)
 }

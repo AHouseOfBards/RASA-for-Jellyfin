@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -69,7 +67,7 @@ func syncer(t *testing.T, f *fakeDynu, publicV4 string) *Syncer {
 	t.Cleanup(ipsrv.Close)
 
 	c := dynu.New("test-key-abcdef123456", dynu.WithBaseURL(f.srv.URL))
-	s := New(c, host, filepath.Join(t.TempDir(), "last-sync.txt"), logging.Discard())
+	s := New(c, host, logging.Discard())
 
 	ip := probe.NewInternetProber(logging.Discard())
 	ip.V4Endpoints = []string{ipsrv.URL}
@@ -139,44 +137,6 @@ func TestComparesAgainstServerNotACache(t *testing.T) {
 	}
 }
 
-func TestHeartbeatWrittenOnSuccess(t *testing.T) {
-	// SPEC.md §15: written on every run including successes, so "is this
-	// working?" is answerable by opening one file.
-	f := newFakeDynu(t, "203.0.113.5", true)
-	s := syncer(t, f, "203.0.113.5")
-	s.RunOnce(context.Background())
-
-	b, err := os.ReadFile(s.HeartbeatPath)
-	if err != nil {
-		t.Fatalf("no heartbeat written: %v", err)
-	}
-	txt := string(b)
-	for _, want := range []string{"last run:", "unchanged", host} {
-		if !strings.Contains(txt, want) {
-			t.Errorf("heartbeat missing %q:\n%s", want, txt)
-		}
-	}
-}
-
-func TestHeartbeatWrittenOnFailure(t *testing.T) {
-	f := newFakeDynu(t, "203.0.113.5", true)
-	s := syncer(t, f, "not-an-address") // public address lookup fails
-	out := s.RunOnce(context.Background())
-
-	if out.Err == nil {
-		t.Fatal("expected a failure")
-	}
-	b, _ := os.ReadFile(s.HeartbeatPath)
-	txt := string(b)
-	if !strings.Contains(txt, "FAILED") {
-		t.Errorf("failure not recorded:\n%s", txt)
-	}
-	// It must tell the user what a sustained failure means and what to do.
-	if !strings.Contains(txt, "stop working") || !strings.Contains(txt, "Re-run") {
-		t.Errorf("heartbeat should explain the consequence and the fix:\n%s", txt)
-	}
-}
-
 func TestMissingHostnameIsReported(t *testing.T) {
 	f := newFakeDynu(t, "203.0.113.5", true)
 	s := syncer(t, f, "203.0.113.5")
@@ -185,18 +145,6 @@ func TestMissingHostnameIsReported(t *testing.T) {
 	out := s.RunOnce(context.Background())
 	if out.Err == nil || !strings.Contains(out.Err.Error(), "no longer on the account") {
 		t.Fatalf("expected a clear missing-hostname error, got %v", out.Err)
-	}
-}
-
-func TestHeartbeatFailureDoesNotFailTheSync(t *testing.T) {
-	// A heartbeat that cannot be written must never turn a successful sync
-	// into a failure.
-	f := newFakeDynu(t, "198.51.100.7", true)
-	s := syncer(t, f, "203.0.113.5")
-	s.HeartbeatPath = string([]byte{0}) // unwritable
-
-	if out := s.RunOnce(context.Background()); out.Err != nil || !out.Updated {
-		t.Fatalf("sync should have succeeded regardless: %+v", out)
 	}
 }
 

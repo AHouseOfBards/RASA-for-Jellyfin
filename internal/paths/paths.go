@@ -97,9 +97,13 @@ func (l Layout) CaddyAccessLog() string { return filepath.Join(l.LogDir, "caddy-
 // SyncLog is where the scheduled DDNS task writes.
 func (l Layout) SyncLog() string { return filepath.Join(l.LogDir, "sync.log") }
 
-// LastSyncFile is the DDNS heartbeat: timestamp, address seen, and result,
-// rewritten on every run including successes, so "is this still working?" is
-// answerable by opening one file (SPEC.md §15).
+// LastSyncFile is the health report: what the sync task checked, when, and
+// whether any of it is broken. Rewritten on every run including successes, so
+// "is this still working?" is answerable by opening one file (SPEC.md §15).
+//
+// The name is historic — it began as a heartbeat for the address sync alone —
+// and is kept so that recovery files already written on users' machines still
+// point at something real.
 func (l Layout) LastSyncFile() string { return filepath.Join(l.StateDir, "last-sync.txt") }
 
 // CaddyfilePath is the generated proxy configuration. It lives beside state
@@ -135,3 +139,8 @@ func (l Layout) EnsureDirs() error {
 	// and DPAPI provides the actual protection.
 	return os.Chmod(l.SecretDir, 0o700)
 }
+
+// AlertStateFile records what the health check last reported, so a fault that
+// has been failing since Tuesday does not raise an alert every ten minutes.
+// Kept beside the health file so removing one removes both.
+func (l Layout) AlertStateFile() string { return filepath.Join(l.StateDir, "alert-state.json") }

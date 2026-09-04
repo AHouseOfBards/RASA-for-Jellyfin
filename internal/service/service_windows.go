@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
 
@@ -39,19 +38,7 @@ func (m *windowsManager) InstallService(ctx context.Context, d Definition) error
 		}
 	}
 
-	// sc.exe requires the whole command line as one binPath value, and its
-	// parser needs a space after each equals sign.
-	bin := quoteArg(d.Executable)
-	for _, a := range d.Args {
-		bin += " " + quoteArg(a)
-	}
-
-	args := []string{"create", d.Name,
-		"binPath=", bin,
-		"start=", "auto",
-		"DisplayName=", d.DisplayName,
-	}
-	if out, err := m.run(ctx, "sc.exe", args...); err != nil {
+	if out, err := m.run(ctx, "sc.exe", scCreateArgs(d)...); err != nil {
 		return wrapPrivilege(fmt.Errorf("creating service %s: %w (%s)", d.Name, err, out))
 	}
 
@@ -136,66 +123,29 @@ func (m *windowsManager) RemoveService(ctx context.Context, name string) error {
 
 func (m *windowsManager) ServiceStatus(ctx context.Context, name string) (Status, error) {
 	out, err := m.run(ctx, "sc.exe", "query", name)
-	if err != nil {
-		// 1060 is "service does not exist", which is an answer rather than a
-		// failure.
-		if strings.Contains(out, "1060") || strings.Contains(strings.ToLower(out), "does not exist") {
-			return StatusNotPresent, nil
-		}
-		return StatusUnknown, nil
-	}
-	low := strings.ToLower(out)
-	switch {
-	case strings.Contains(low, "running"):
-		return StatusRunning, nil
-	case strings.Contains(low, "stopped"):
-		return StatusStopped, nil
-	}
-	return StatusUnknown, nil
+	return parseServiceStatus(out, err), nil
 }
 
 func (m *windowsManager) InstallTimer(ctx context.Context, t Timer) error {
 	_ = m.RemoveTimer(ctx, t.Name)
 
-	cmd := quoteArg(t.Executable)
-	for _, a := range t.Args {
-		cmd += " " + quoteArg(a)
-	}
-
-	minutes := int(t.Interval / time.Minute)
-	if minutes < 1 {
-		minutes = 1
-	}
-
-	// Runs as SYSTEM so it works with nobody signed in, and so it can read the
-	// machine-scope DPAPI credential.
-	args := []string{"/Create", "/TN", t.Name, "/TR", cmd,
-		"/SC", "MINUTE", "/MO", strconv.Itoa(minutes),
-		"/RU", "SYSTEM", "/RL", "HIGHEST", "/F"}
-
-	if out, err := m.run(ctx, "schtasks.exe", args...); err != nil {
+	if out, err := m.run(ctx, "schtasks.exe", schtasksCreateArgs(t)...); err != nil {
 		return wrapPrivilege(fmt.Errorf("creating scheduled task %s: %w (%s)", t.Name, err, out))
 	}
 
 	if t.RunAtStartup {
-		// A separate boot trigger, because a WAN address most often changes
-		// across a reboot and the minute-interval trigger would leave the
-		// record stale until its next tick.
-		boot := t.Name + "AtStartup"
-		bootArgs := []string{"/Create", "/TN", boot, "/TR", cmd,
-			"/SC", "ONSTART", "/RU", "SYSTEM", "/RL", "HIGHEST", "/F"}
-		if out, err := m.run(ctx, "schtasks.exe", bootArgs...); err != nil {
+		if out, err := m.run(ctx, "schtasks.exe", schtasksBootArgs(t)...); err != nil {
 			m.log.Debug("could not create startup trigger", slog.String("out", out))
 		}
 	}
 
 	m.log.Info("scheduled task installed",
-		slog.String("name", t.Name), slog.Int("interval_minutes", minutes))
+		slog.String("name", t.Name), slog.Duration("interval", t.Interval))
 	return nil
 }
 
 func (m *windowsManager) RemoveTimer(ctx context.Context, name string) error {
-	for _, n := range []string{name, name + "AtStartup"} {
+	for _, n := range []string{name, name + bootTaskSuffix} {
 		if ok, _ := m.TimerInstalled(ctx, n); !ok {
 			continue
 		}
@@ -250,15 +200,6 @@ func (m *windowsManager) run(ctx context.Context, name string, args ...string) (
 	defer cancel()
 	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
 	return string(out), err
-}
-
-// quoteArg wraps a value in quotes when it contains spaces, which Windows
-// paths routinely do.
-func quoteArg(s string) string {
-	if strings.ContainsAny(s, " \t") && !strings.HasPrefix(s, `"`) {
-		return `"` + s + `"`
-	}
-	return s
 }
 
 func wrapPrivilege(err error) error {

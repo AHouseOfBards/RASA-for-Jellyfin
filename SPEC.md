@@ -555,13 +555,26 @@ Every user-facing error answers **what happened**, **why**, **what now**. Where 
 
 | Source | Records | Lives until |
 |---|---|---|
-| **RASA** — setup log | The whole wizard run, per run id | Forever — **explicitly preserved on uninstall** |
+| **RASA** — setup log | The whole wizard run, per run id | Rolls at 8MB, 2 kept — **explicitly preserved on uninstall** |
 | **Caddy** — service log | Renewal attempts, TLS errors, proxy failures | Rotating, indefinitely |
-| **Sync task** — address updates | Each run's result and address seen | Rotating, indefinitely |
+| **Sync task** — address updates and health | Each run's result and address seen | Rolls at 8MB, 2 kept |
 
 Caddy defaults to the service log, awkward to find on Windows — the generated Caddyfile directs a structured log to the shared directory instead.
 
-> ⚠️ **The sync task needs a heartbeat.** A scheduled task quietly failing for six months is the most plausible silent failure in this design. Write `last-sync.txt` with timestamp, address seen, and result on **every** run including successes. That makes "is this still working?" answerable by opening one file.
+Every one of these rolls. The sync task's log is the reason it is not optional: its happy path is quiet, but a failing run writes an error every ten minutes forever, so the broken state would otherwise be silent, unnoticed, and slowly filling the disk.
+
+> ⚠️ **The sync task is the only thing that can notice a failure.** RASA is uninstalled once setup finishes, so a health check inside the wizard is worthless by design — nobody has it installed when it would matter. The sync task runs every ten minutes forever, which makes it the only component positioned to check.
+>
+> It writes `last-sync.txt` on **every** run including successes: a headline saying whether remote access is working, when it was last checked, and what is wrong if anything. A stale date at the top is the evidence that the check itself has stopped. That makes "is this still working?" answerable by opening one file, with no tooling and no RASA.
+>
+> Two things are checked, because the address is only half of it:
+>
+> - **The address** still resolves to this connection, from the sync run itself.
+> - **The proxy** answers on loopback with a certificate that is valid, for the right name, and not about to run out. This is the served certificate, not the expiry recorded at setup — the recorded value answers what was true months ago. Loopback rather than the public address, because a router without NAT hairpinning would report a healthy server as broken (§11).
+>
+> A failure is also raised on the operating system's own channel for unattended work: the Windows Event Log via `eventcreate`, or the journal via stderr under systemd. It cannot show a dialog — on Windows the task runs as SYSTEM in session 0, which has no desktop.
+>
+> **The alert must not become the failure it reports.** Every ten minutes forever is fifty thousand entries a year in a log the user cannot roll. An alert goes out when the set of failing checks *changes*, once a day while a fault persists, and once when it clears — nothing else.
 
 ### Anti-patterns
 

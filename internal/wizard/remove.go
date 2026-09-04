@@ -132,6 +132,15 @@ func (w *Wizard) RemoveRemoteAccess(ctx context.Context) error {
 	w.mu.Unlock()
 	w.save()
 
+	// The record of what the health check last reported describes a system
+	// that no longer exists. Left behind, it would suppress the first alert
+	// after a future re-install for as long as the fault happened to match.
+	if path := w.opts.Layout.AlertStateFile(); path != "" {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			w.log.Warn("could not clear the alert record", slog.Any("err", err))
+		}
+	}
+
 	log.OK("Remote access has been removed.")
 	w.update(func(m *Model) {
 		m.Screen = ScreenRemoved
