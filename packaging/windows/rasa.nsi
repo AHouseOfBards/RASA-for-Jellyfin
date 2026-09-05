@@ -28,7 +28,76 @@ Page instfiles
 UninstPage uninstConfirm
 UninstPage instfiles
 
+; A running RASA holds its own executable open, so installing over it fails
+; with "Error opening file for writing: ...\rasa.exe" and the uninstaller
+; silently leaves the file behind.
+;
+; The user cannot be expected to notice. Since 0.7 the wizard is built for the
+; GUI subsystem so that double-clicking an installer does not leave a black
+; console window on screen - which also means a copy left running has no
+; window, no console and no taskbar entry. There is nothing to close and
+; nothing to see. This installer also launches it on the way out, so the second
+; run of the installer hits this every time.
+;
+; Closing it is exactly what RASA's own -replace flag does
+; (internal/instance.Stop), and it is safe: setup state is persisted and
+; resumable by design, and the lock file records an address rather than
+; trusting a process id, so the next run takes over a lock left by a kill.
+!macro CloseRunningRASA PREFIX
+Function ${PREFIX}CloseRunningRASA
+  Push $0
+  Push $1
+
+  ; Ask the question that actually matters -- can this file be written? --
+  ; rather than the one that approximates it. A process name can be matched
+  ; wrongly and a tasklist pipeline has to survive two layers of quoting
+  ; through cmd; opening the file tests the exact condition that produced the
+  ; error, and catches a lock held by something other than RASA too.
+  ;
+  ; Only when it already exists: on a first install there is nothing to open
+  ; and no directory to open it in.
+  IfFileExists "$INSTDIR\rasa.exe" 0 ${PREFIX}rasa_done
+
+  ClearErrors
+  ; Append mode: it opens for writing without truncating, so a file that is
+  ; free is left exactly as it was found.
+  FileOpen $0 "$INSTDIR\rasa.exe" a
+  IfErrors 0 ${PREFIX}rasa_free
+    MessageBox MB_OKCANCEL|MB_ICONINFORMATION \
+      "RASA is already running.$\r$\n$\r$\nIt has no window of its own, so there is nothing on screen to close. Setup will close it and carry on.$\r$\n$\r$\nAnything it had already set up is saved, and running it again picks up where it left off." \
+      IDOK ${PREFIX}rasa_close
+    Abort "Setup stopped because RASA is still running."
+
+    ${PREFIX}rasa_close:
+    ; This needs the elevation the installer already holds. RASA relaunches
+    ; itself as administrator at startup, so a copy left running cannot be
+    ; closed from an ordinary command prompt -- which is how the original
+    ; report ended with "Access is denied".
+    ;
+    ; No /T: that would also take the browser RASA opened, which belongs to
+    ; the user rather than to setup.
+    nsExec::ExecToStack 'taskkill /F /IM rasa.exe'
+    Pop $0
+    Pop $1
+    ; Windows releases the handle a moment after the process goes, and writing
+    ; too early fails exactly as if it had never been closed.
+    Sleep 2000
+    Goto ${PREFIX}rasa_done
+
+  ${PREFIX}rasa_free:
+  FileClose $0
+
+  ${PREFIX}rasa_done:
+  Pop $1
+  Pop $0
+FunctionEnd
+!macroend
+
+!insertmacro CloseRunningRASA ""
+!insertmacro CloseRunningRASA "un."
+
 Section "Install"
+  Call CloseRunningRASA
   SetOutPath "$INSTDIR"
   File "rasa.exe"
   File "rasa-sync.exe"
@@ -62,6 +131,11 @@ Section "Install"
 SectionEnd
 
 Section "Uninstall"
+  ; Same reason as the install side, with a quieter failure: Delete does not
+  ; report an error, so a locked rasa.exe would leave the install half-removed
+  ; and the uninstaller claiming success.
+  Call un.CloseRunningRASA
+
   ; Only the wizard is removed. Caddy, the scheduled task and the data
   ; directory stay - removing them would take remote access down, which is the
   ; opposite of what uninstalling a setup app should mean here.
