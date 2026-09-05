@@ -1249,15 +1249,29 @@ func (w *Wizard) SkipPort(ctx context.Context) error {
 	}
 	defer w.end()
 
+	// Two different situations reach this button, and only one of them is
+	// "the port was never opened".
+	//
+	// A router that granted a mapping with a lease has opened the port for
+	// real; it will simply forget on the next restart. Telling that user their
+	// port "was not confirmed open" is wrong on the screen and wrong in the
+	// recovery file, which is the copy that outlives RASA. The finite_lease
+	// warning existed for exactly this and nothing ever set it.
+	mapped := w.currentMapping()
+
+	code, text := "port_not_confirmed",
+		"Your router port was not confirmed open. If your server can't be reached from outside, the instructions in your recovery file will fix it."
+	if mapped != nil && !mapped.Permanent {
+		code, text = "finite_lease",
+			fmt.Sprintf("Your router opened port %d, but only temporarily, and it will forget when it restarts. The router settings in this file make it permanent.", mapped.ExternalPort)
+	}
+
 	w.mu.Lock()
-	w.st.AddWarning("port_not_confirmed", "Your router port was not confirmed open. If your server can't be reached from outside, the instructions in your recovery file will fix it.")
+	w.st.AddWarning(code, text)
 	w.mu.Unlock()
 	w.advance(state.PortsMapped)
 	w.update(func(m *Model) {
-		m.Warnings = append(m.Warnings, Warning{
-			Code: "port_not_confirmed",
-			Text: "Your router port was not confirmed open. If your server can't be reached from outside, the instructions in your recovery file will fix it.",
-		})
+		m.Warnings = append(m.Warnings, Warning{Code: code, Text: text})
 		m.Screen = ScreenSetup
 	})
 	return nil

@@ -347,3 +347,63 @@ func (m *conflictThenOKMapper) Add(ctx context.Context, req portmap.Request) (*p
 		VerifiedByReadback: true,
 	}, nil
 }
+
+// A router that granted a mapping with a lease has opened the port for real.
+// Telling that user their port "was not confirmed open" is wrong on screen and
+// wrong in the recovery file, which is the copy that outlives RASA.
+func TestContinuingWithATemporaryOpeningSaysItIsTemporary(t *testing.T) {
+	h := newHarness(t, func(o *Options) {
+		// A lease rather than a permanent mapping, which is what stops the
+		// wizard on this screen in the first place.
+		o.NewMapper = func(string, string) PortMapper {
+			return &fakeMapper{result: &portmap.Result{
+				Mapping: portmap.Mapping{
+					ExternalPort: 443, InternalPort: 443, LeaseSeconds: 3600,
+				},
+				VerifiedByReadback: true,
+			}}
+		}
+	})
+
+	ctx := context.Background()
+	for _, step := range []func() error{
+		func() error { return h.w.Start(ctx) },
+		func() error { return h.w.SignIn(ctx, "admin", "pw") },
+		func() error { return h.w.SetDynuKey(ctx, testKey) },
+		func() error { return h.w.ClaimName(ctx, "mymedia", "freeddns.org") },
+	} {
+		if err := step(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	m := h.w.Model()
+	if m.Screen != ScreenPort {
+		t.Fatalf("screen = %s; a leased mapping has to stop here", m.Screen)
+	}
+	if !m.Port.Open {
+		t.Fatal("the port was opened and the screen does not say so")
+	}
+	if m.Port.Permanent {
+		t.Fatal("a leased mapping is not permanent")
+	}
+
+	if err := h.w.SkipPort(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var got Warning
+	for _, w := range h.w.Model().Warnings {
+		if w.Code == "finite_lease" || w.Code == "port_not_confirmed" {
+			got = w
+		}
+	}
+	if got.Code != "finite_lease" {
+		t.Fatalf("warning code = %q, want finite_lease", got.Code)
+	}
+	if strings.Contains(got.Text, "not confirmed open") {
+		t.Errorf("claimed the port was never opened: %q", got.Text)
+	}
+	if !strings.Contains(got.Text, "temporarily") {
+		t.Errorf("does not say the opening is temporary: %q", got.Text)
+	}
+}

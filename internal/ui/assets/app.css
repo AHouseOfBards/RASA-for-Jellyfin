@@ -372,18 +372,37 @@ button:disabled { opacity: 0.5; cursor: default; }
 .notice p { margin: 0 0 10px; }
 .notice p:last-child { margin-bottom: 0; }
 
-/* The router picker, offered when nothing identified the router. The label is
-   a full sentence rather than a word, so it wraps above the control on a
-   narrow window instead of squeezing it. */
-#port-pick {
+/* Which router the steps are for, and both ways of correcting it, on one row.
+   This was three stacked lines saying nearly the same thing. */
+.routerline {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-bottom: 18px;
+  font-size: 14px;
+  color: var(--ink-soft);
+  max-width: var(--measure);
+  margin: 0 0 20px;
 }
 
 #port-router-select { width: auto; }
+
+/* The catalogue's per-router gotchas. Closed by default: it is a paragraph of
+   caveats that used to stand between the user and the instructions. */
+.stuck {
+  max-width: var(--measure);
+  margin: 18px 0;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.stuck summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.stuck p { margin: 10px 0 0; }
 
 .problem { border-left: 4px solid var(--bad); }
 /* A screen that hosts its own problem box keeps the element in the page and

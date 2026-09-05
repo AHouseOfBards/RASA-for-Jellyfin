@@ -237,45 +237,44 @@
         </p>
       </div>
       <div id="port-guide" hidden>
-        <h2 id="port-router"></h2>
-        <!-- Which router RASA thinks it is talking to, and the way out when it
-             is wrong. Matching is a guess from a UPnP vendor string or an admin
-             page title, and a wrong guess is worse than the generic guide: it
-             sends someone hunting for a menu their model does not have. -->
-        <p class="hint" id="port-guess" hidden>
+        <!-- Which router the steps are for, whether RASA worked it out or the
+             user said so, and both ways of correcting it. One row: this was
+             three separate lines saying nearly the same thing, directly above
+             a heading that also just named the router. -->
+        <p class="routerline" id="port-guess" hidden>
           <span id="port-guess-text"></span>
-          <button class="link" type="button" data-action="port-generic">Not my router</button>
-        </p>
-        <!-- The way forward when identification failed, which it does whenever
-             the router will not say what it is: UPnP off, an admin page that
-             names nothing, and a MAC prefix nobody has verified. The user can
-             read the label on the box. Without this the screen said "your
-             router" and offered general steps with no way to improve on them. -->
-        <p class="hint" id="port-pick" hidden>
           <label for="port-router-select" id="port-pick-label"></label>
           <select id="port-router-select">
             <option value="">Choose your router…</option>
           </select>
+          <button class="link" type="button" data-action="port-generic">Not my router</button>
         </p>
-        <!-- The catalogue's warning about the step people actually get stuck
-             on for this router. It reached the recovery file and never this
-             screen, which is the one place the user is standing in their
-             router's admin page trying to follow along. -->
-        <p class="warn" id="port-note" hidden></p>
+        <h2 id="port-steps-heading">What to do</h2>
         <ol class="numbered" id="port-steps"></ol>
         <table class="values">
           <caption>Type these exactly</caption>
           <tbody id="port-values"></tbody>
         </table>
+        <!-- The catalogue's warning about the step people actually get stuck
+             on for this router. Below the steps rather than above them: it
+             used to be the first thing on the screen, an unbroken paragraph of
+             caveats standing between the user and the instructions. -->
+        <details class="stuck" id="port-note-block" hidden>
+          <summary id="port-note-summary">If you get stuck on this router</summary>
+          <p id="port-note"></p>
+        </details>
         <p class="warn" id="port-reservation" hidden></p>
       </div>
-      <!-- data-keep-enabled: the skip stays clickable while busy. It used to be
-           disabled along with everything else, so the one button whose entire
-           purpose is escaping a slow router attempt was greyed out for exactly
-           as long as the user wanted it. -->
+      <!-- data-keep-enabled: these stay clickable while busy. Continue used to
+           be disabled along with everything else, so the one button whose
+           entire purpose is escaping a slow router attempt was greyed out for
+           exactly as long as the user wanted it.
+
+           Which of the two is the primary action depends on whether the port
+           is already open: see renderPortActions. -->
       <div class="actions">
-        <button class="primary" data-action="port-open">Test again</button>
-        <button class="link" data-action="port-skip" data-keep-enabled>Continue without it</button>
+        <button class="primary" data-action="port-open" id="port-retest">Test again</button>
+        <button class="link" data-action="port-skip" id="port-continue" data-keep-enabled>Continue without it</button>
       </div>
     </section>
 

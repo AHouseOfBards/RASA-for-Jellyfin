@@ -433,28 +433,29 @@ function renderUPnPNotice(p) {
 // not hedge), or nobody knows (say that too, rather than the silence that
 // followed "your router" before, and offer the list).
 function renderRouterChoice(p) {
-  const guess = document.getElementById("port-guess");
+  const row = document.getElementById("port-guess");
   const text = document.getElementById("port-guess-text");
-  const pick = document.getElementById("port-pick");
   const label = document.getElementById("port-pick-label");
+  const select = document.getElementById("port-router-select");
 
   const identified = p.router_guessed || p.router_chosen;
-  guess.hidden = !identified;
   if (p.router_guessed) {
-    text.textContent = `RASA thinks your router is ${p.router_name}.`;
+    text.textContent = `Steps for ${p.router_name}, which is what RASA thinks you have.`;
   } else if (p.router_chosen) {
-    text.textContent = `Showing steps for ${p.router_name}.`;
+    text.textContent = `Steps for ${p.router_name}.`;
+  } else {
+    text.textContent = "RASA couldn't work out which router you have, so these are the general steps.";
   }
 
   const options = p.router_options || [];
-  pick.hidden = options.length === 0;
-  if (pick.hidden) return;
+  row.hidden = false;
+  label.textContent = identified ? "Wrong one?" : "Pick yours:";
+  label.hidden = options.length === 0;
+  select.hidden = options.length === 0;
+  // "Not my router" means "show me the general steps instead", which is
+  // nothing to offer someone already looking at them.
+  document.querySelector('[data-action="port-generic"]').hidden = !identified;
 
-  label.textContent = identified
-    ? "Wrong one? Pick your router:"
-    : "RASA couldn't identify your router. Pick it for exact steps:";
-
-  const select = document.getElementById("port-router-select");
   // Rebuilt on every render, so the selection has to be restored from the
   // model rather than left to the browser.
   select.replaceChildren();
@@ -469,6 +470,30 @@ function renderRouterChoice(p) {
     select.appendChild(opt);
   }
   select.value = p.router_chosen || "";
+}
+
+// Which button is the main one, and what the two of them say.
+//
+// A port that is already open makes "Test again" the wrong primary action and
+// "Continue without it" an untrue label: there is something, it is just
+// temporary. Reported as "I know UPnP worked, so why is it still asking me to
+// port forward?" -- the answer being that the steps are optional here, which
+// the screen never said.
+function renderPortActions(p) {
+  const retest = document.getElementById("port-retest");
+  const cont = document.getElementById("port-continue");
+
+  if (p.open) {
+    cont.textContent = "Continue";
+    cont.className = "primary";
+    retest.textContent = "I've done it, check again";
+    retest.className = "secondary";
+  } else {
+    retest.textContent = "Test again";
+    retest.className = "primary";
+    cont.textContent = "Continue without it";
+    cont.className = "link";
+  }
 }
 
 function renderPort() {
@@ -505,18 +530,32 @@ function renderPort() {
   }
 
   guide.hidden = false;
-  document.getElementById("port-title").textContent = "One thing to do on your router";
-  lede.textContent = p.open && !p.permanent
-    ? "Your router opened the port, but it will forget when it restarts. Making it permanent takes a minute."
-    : "Your router needs one rule adding. Everything you need is below.";
 
-  document.getElementById("port-router").textContent = p.router_name || "Your router";
+  // Three different situations, and the user has to be told which one they are
+  // in before anything else on the screen makes sense.
+  if (p.open) {
+    document.getElementById("port-title").textContent = "Your router opened the port";
+    lede.textContent =
+      "Remote access will work once setup finishes. Your router only opened the port temporarily, " +
+      "so it will stop working when the router restarts. The steps below make it permanent. " +
+      "You can also carry on now and do them later.";
+    document.getElementById("port-steps-heading").textContent = "To make it permanent";
+  } else {
+    document.getElementById("port-title").textContent = "One thing to do on your router";
+    lede.textContent = "Your router needs one rule adding. Everything you need is below.";
+    document.getElementById("port-steps-heading").textContent = "What to do";
+  }
 
   renderRouterChoice(p);
+  renderPortActions(p);
 
-  const note = document.getElementById("port-note");
-  note.textContent = p.router_note || "";
-  note.hidden = !p.router_note;
+  const noteBlock = document.getElementById("port-note-block");
+  noteBlock.hidden = !p.router_note;
+  if (p.router_note) {
+    document.getElementById("port-note").textContent = p.router_note;
+    document.getElementById("port-note-summary").textContent =
+      `If you get stuck on ${p.router_name || "your router"}`;
+  }
 
   const steps = document.getElementById("port-steps");
   steps.replaceChildren();
