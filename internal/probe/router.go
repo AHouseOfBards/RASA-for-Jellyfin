@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -24,13 +25,44 @@ import (
 // for its external address, which is what the CGNAT comparison in SPEC.md §5
 // needs. Creating mappings is task 5.
 
-const (
-	ssdpAddr      = "239.255.255.250:1900"
-	igdDeviceType = "urn:schemas-upnp-org:device:InternetGatewayDevice:1"
+const ssdpAddr = "239.255.255.250:1900"
 
-	svcWANIPConnection  = "urn:schemas-upnp-org:service:WANIPConnection:1"
-	svcWANPPPConnection = "urn:schemas-upnp-org:service:WANPPPConnection:1"
-)
+// searchTargets are the search types sent, most specific first.
+//
+// Asking only for InternetGatewayDevice:1 was a version assumption, and a
+// wrong one: a router that implements IGD version 2 is under no obligation to
+// answer a search for version 1, and newer hardware increasingly implements
+// only 2. The symptom is total silence -- indistinguishable from UPnP being
+// switched off, which is exactly how it was reported, with a screenshot of the
+// setting plainly enabled.
+//
+// upnp:rootdevice is the backstop. Everything that speaks UPnP at all answers
+// it, including a router whose device type is spelled in some way nobody
+// anticipated. It also brings in televisions and printers, which is why a
+// candidate is only accepted once its description turns out to have a WAN
+// connection service in it.
+var searchTargets = []string{
+	"urn:schemas-upnp-org:device:InternetGatewayDevice:2",
+	"urn:schemas-upnp-org:device:InternetGatewayDevice:1",
+	"upnp:rootdevice",
+}
+
+// wanServicePrefixes match the port-mapping service at any version, for the
+// same reason: pinning to :1 rejected a perfectly good :2 service as "this
+// router does not offer port opening".
+var wanServicePrefixes = []string{
+	"urn:schemas-upnp-org:service:WANIPConnection:",
+	"urn:schemas-upnp-org:service:WANPPPConnection:",
+}
+
+func isWANService(t string) bool {
+	for _, p := range wanServicePrefixes {
+		if strings.HasPrefix(t, p) {
+			return true
+		}
+	}
+	return false
+}
 
 // RouterProber discovers the local gateway.
 type RouterProber struct {
@@ -109,7 +141,7 @@ func (p *RouterProber) Probe(ctx context.Context) Router {
 // queryIGD fills in everything that only UPnP can tell us. Every failure is
 // soft: a router that does not speak IGD leaves out untouched.
 func (p *RouterProber) queryIGD(ctx context.Context, out *Router) {
-	loc, from, err := p.discover(ctx, out.Gateway)
+	found, err := p.discover(ctx, out.Gateway)
 	if err != nil {
 		// Info, not debug. This is the single most asked question about this
 		// step -- "why isn't UPnP working for me?" -- and at debug level the
@@ -120,25 +152,52 @@ func (p *RouterProber) queryIGD(ctx context.Context, out *Router) {
 			slog.Any("err", err))
 		return
 	}
-	// A router that answered SSDP is reachable, and the reply source is its
-	// LAN address — more reliable than parsing a routing table.
+	// Something on the network speaks UPnP, so the search is getting out.
 	out.Reachable = true
-	if from.IsValid() {
-		out.Gateway = from
+
+	// Every answer is tried, not only the first. The backstop search type is
+	// answered by televisions and printers as well as by routers, and a home
+	// network usually has more of the former.
+	var ctrl, svcType string
+	var described bool
+	for _, c := range found {
+		desc, err := p.describe(ctx, c.location)
+		if err != nil {
+			p.Log.Debug("a device would not describe itself",
+				slog.String("location", c.location), slog.Any("err", err))
+			continue
+		}
+		wanURL, wanType := findWANService(&desc.Device, c.location)
+		if wanURL == "" {
+			if !described && c.gateway {
+				// Worth remembering: a device that called itself a gateway and
+				// has no port-mapping service is the "UPnP is on but it is the
+				// media sharing kind" case, and its name belongs in the log.
+				described = true
+				out.Vendor = strings.TrimSpace(desc.Device.Manufacturer)
+				out.Model = strings.TrimSpace(firstNonEmpty(desc.Device.ModelName, desc.Device.ModelNumber, desc.Device.FriendlyName))
+			}
+			continue
+		}
+		described = true
+		out.Vendor = strings.TrimSpace(desc.Device.Manufacturer)
+		out.Model = strings.TrimSpace(firstNonEmpty(desc.Device.ModelName, desc.Device.ModelNumber, desc.Device.FriendlyName))
+		if c.from.IsValid() {
+			// The address it replied from is its LAN address, which is more
+			// reliable than parsing a routing table.
+			out.Gateway = c.from
+		}
+		ctrl, svcType = wanURL, wanType
+		break
 	}
 
-	desc, err := p.describe(ctx, loc)
-	if err != nil {
-		out.UPnPStatus = UPnPNoDescription
-		p.Log.Info("the router answered but would not describe itself",
-			slog.String("location", loc), slog.Any("err", err))
-		return
-	}
-	out.Vendor = strings.TrimSpace(desc.Device.Manufacturer)
-	out.Model = strings.TrimSpace(firstNonEmpty(desc.Device.ModelName, desc.Device.ModelNumber, desc.Device.FriendlyName))
-
-	ctrl, svcType := findWANService(&desc.Device, loc)
 	if ctrl == "" {
+		if !described {
+			out.UPnPStatus = UPnPNoDescription
+			p.Log.Info("something answered but would not describe itself",
+				slog.Int("devices", len(found)))
+			return
+		}
 		// The router speaks UPnP but not the port-opening half of it. Usually
 		// this is a "UPnP" switch that turns on media sharing and nothing else.
 		out.UPnPStatus = UPnPNoPortService
@@ -162,9 +221,9 @@ func (p *RouterProber) queryIGD(ctx context.Context, out *Router) {
 
 }
 
-// discover sends an SSDP M-SEARCH and returns the first IGD location found,
-// along with the address it replied from.
-func (p *RouterProber) discover(ctx context.Context, gw netip.Addr) (location string, from netip.Addr, err error) {
+// discover searches for gateways and returns everything that answered, best
+// first.
+func (p *RouterProber) discover(ctx context.Context, gw netip.Addr) ([]candidate, error) {
 	// Bound to the address that faces the router, not to whatever the system
 	// would pick.
 	//
@@ -186,14 +245,14 @@ func (p *RouterProber) discover(ctx context.Context, gw netip.Addr) (location st
 			slog.String("address", local), slog.Any("err", err))
 		conn, err = net.ListenPacket("udp4", ":0")
 		if err != nil {
-			return "", netip.Addr{}, err
+			return nil, err
 		}
 	}
 	defer conn.Close()
 
 	dst, err := net.ResolveUDPAddr("udp4", ssdpAddr)
 	if err != nil {
-		return "", netip.Addr{}, err
+		return nil, err
 	}
 
 	// The gateway is asked directly as well as over multicast. A unicast
@@ -205,76 +264,117 @@ func (p *RouterProber) discover(ctx context.Context, gw netip.Addr) (location st
 		targets = append(targets, &net.UDPAddr{IP: net.IP(gw.AsSlice()), Port: 1900})
 	}
 
-	// MX is the maximum delay a device may wait before replying; keep it
-	// below SearchTimeout or well-behaved routers answer after we stop
-	// listening.
-	msg := "M-SEARCH * HTTP/1.1\r\n" +
-		"HOST: " + ssdpAddr + "\r\n" +
-		"MAN: \"ssdp:discover\"\r\n" +
-		"MX: 2\r\n" +
-		"ST: " + igdDeviceType + "\r\n\r\n"
-
 	deadline := time.Now().Add(p.SearchTimeout)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
 		deadline = d
 	}
 	if err := conn.SetDeadline(deadline); err != nil {
-		return "", netip.Addr{}, err
+		return nil, err
 	}
 
-	// Send twice to each: SSDP is UDP and a single datagram is genuinely lost
-	// often enough to matter on busy wireless networks.
+	// Every search type, to every target, twice.
 	//
-	// A send that fails is not fatal any more. Multicast can be refused
-	// outright on a machine whose routing makes no sense for it, and the
-	// unicast question to the gateway is the one likely to be answered in
-	// exactly that case — giving up on the first failure would throw away the
-	// attempt most likely to work.
+	// A send that fails is not fatal. Multicast can be refused outright on a
+	// machine whose routing makes no sense for it, and the unicast question to
+	// the gateway is the one likely to be answered in exactly that case, so
+	// giving up on the first failure would throw away the attempt most likely
+	// to work. SSDP is UDP and a single datagram is genuinely lost often
+	// enough on busy wireless to be worth sending twice.
 	var sent int
 	var lastErr error
 	for i := 0; i < 2; i++ {
-		for _, t := range targets {
-			if _, err := conn.WriteTo([]byte(msg), t); err != nil {
-				lastErr = err
-				continue
+		for _, st := range searchTargets {
+			// MX is the longest a device may wait before replying; keep it
+			// below SearchTimeout or well-behaved routers answer after we have
+			// stopped listening.
+			msg := "M-SEARCH * HTTP/1.1\r\n" +
+				"HOST: " + ssdpAddr + "\r\n" +
+				"MAN: \"ssdp:discover\"\r\n" +
+				"MX: 2\r\n" +
+				"ST: " + st + "\r\n\r\n"
+			for _, t := range targets {
+				if _, err := conn.WriteTo([]byte(msg), t); err != nil {
+					lastErr = err
+					continue
+				}
+				sent++
 			}
-			sent++
 		}
 	}
 	if sent == 0 {
-		return "", netip.Addr{}, fmt.Errorf("could not send a discovery request: %w", lastErr)
+		return nil, fmt.Errorf("could not send a discovery request: %w", lastErr)
 	}
 
+	// Replies are collected rather than the first one taken.
+	//
+	// upnp:rootdevice is answered by everything on the network that speaks
+	// UPnP at all, so the first reply is frequently a television. A reply
+	// whose own search type names an InternetGatewayDevice is worth stopping
+	// for; anything else is a candidate to be checked only if nothing better
+	// arrives before the deadline.
+	var found []candidate
+	seen := map[string]bool{}
 	buf := make([]byte, 2048)
-	for {
+	for len(found) < maxCandidates {
 		n, src, err := conn.ReadFrom(buf)
 		if err != nil {
-			return "", netip.Addr{}, fmt.Errorf("no igd replied: %w", err)
+			break
 		}
-		loc := ssdpLocation(buf[:n])
-		if loc == "" {
+		loc := ssdpHeader(buf[:n], "LOCATION")
+		if loc == "" || seen[loc] {
 			continue
 		}
+		seen[loc] = true
+
 		var addr netip.Addr
 		if ua, ok := src.(*net.UDPAddr); ok {
 			if a, ok := netip.AddrFromSlice(ua.IP); ok {
 				addr = a.Unmap()
 			}
 		}
-		return loc, addr, nil
+		c := candidate{location: loc, from: addr}
+		// ST on a reply, USN as the fallback: some devices leave ST off and
+		// carry the type only in the USN.
+		kind := ssdpHeader(buf[:n], "ST") + " " + ssdpHeader(buf[:n], "USN")
+		c.gateway = strings.Contains(kind, "InternetGatewayDevice")
+		found = append(found, c)
+		if c.gateway {
+			// Unambiguous. No reason to spend the rest of the budget.
+			break
+		}
 	}
+
+	if len(found) == 0 {
+		return nil, fmt.Errorf("no device replied to the discovery request")
+	}
+	// Gateways first, so a television never costs a description fetch ahead of
+	// the router.
+	sort.SliceStable(found, func(i, j int) bool { return found[i].gateway && !found[j].gateway })
+	return found, nil
 }
 
-// ssdpLocation extracts the LOCATION header from an SSDP reply.
-func ssdpLocation(b []byte) string {
+// candidate is one device that answered discovery.
+type candidate struct {
+	location string
+	from     netip.Addr
+	// gateway records that the reply named itself an InternetGatewayDevice,
+	// rather than merely being something that speaks UPnP.
+	gateway bool
+}
+
+// maxCandidates bounds how many devices are considered. A home network has one
+// router; the rest of the replies are media players.
+const maxCandidates = 8
+
+// ssdpHeader extracts one header from an SSDP reply.
+func ssdpHeader(b []byte, name string) string {
 	sc := bufio.NewScanner(bytes.NewReader(b))
 	for sc.Scan() {
-		line := sc.Text()
-		k, v, ok := strings.Cut(line, ":")
+		k, v, ok := strings.Cut(sc.Text(), ":")
 		if !ok {
 			continue
 		}
-		if strings.EqualFold(strings.TrimSpace(k), "LOCATION") {
+		if strings.EqualFold(strings.TrimSpace(k), name) {
 			return strings.TrimSpace(v)
 		}
 	}
@@ -335,7 +435,7 @@ func (p *RouterProber) describe(ctx context.Context, location string) (*upnpRoot
 // returns an absolute control URL plus the service type to invoke it with.
 func findWANService(d *upnpDevice, base string) (controlURL, serviceType string) {
 	for _, s := range d.Services {
-		if s.ServiceType == svcWANIPConnection || s.ServiceType == svcWANPPPConnection {
+		if isWANService(s.ServiceType) {
 			return absoluteURL(base, s.ControlURL), s.ServiceType
 		}
 	}

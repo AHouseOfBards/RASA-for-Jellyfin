@@ -56,7 +56,7 @@ func TestSSDPLocationHeader(t *testing.T) {
 		"LOCATION: http://192.168.1.1:5000/rootDesc.xml\r\n" +
 		"ST: urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\n\r\n"
 
-	if got := ssdpLocation([]byte(reply)); got != "http://192.168.1.1:5000/rootDesc.xml" {
+	if got := ssdpHeader([]byte(reply), "LOCATION"); got != "http://192.168.1.1:5000/rootDesc.xml" {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -64,13 +64,13 @@ func TestSSDPLocationHeader(t *testing.T) {
 func TestSSDPLocationIsCaseInsensitive(t *testing.T) {
 	// Real routers vary the header case, and some send "Location".
 	reply := "HTTP/1.1 200 OK\r\nlocation: http://10.0.0.1/desc.xml\r\n\r\n"
-	if got := ssdpLocation([]byte(reply)); got != "http://10.0.0.1/desc.xml" {
+	if got := ssdpHeader([]byte(reply), "LOCATION"); got != "http://10.0.0.1/desc.xml" {
 		t.Fatalf("got %q", got)
 	}
 }
 
 func TestSSDPLocationMissing(t *testing.T) {
-	if got := ssdpLocation([]byte("HTTP/1.1 200 OK\r\nST: something\r\n\r\n")); got != "" {
+	if got := ssdpHeader([]byte("HTTP/1.1 200 OK\r\nST: something\r\n\r\n"), "LOCATION"); got != "" {
 		t.Fatalf("expected empty, got %q", got)
 	}
 }
@@ -92,7 +92,7 @@ func TestFindWANServiceWalksNestedDevices(t *testing.T) {
 	if ctrl != srv.URL+"/ctl/IPConn" {
 		t.Fatalf("control url = %q", ctrl)
 	}
-	if svcType != svcWANIPConnection {
+	if svcType != testWANService {
 		t.Fatalf("service type = %q", svcType)
 	}
 }
@@ -140,7 +140,7 @@ func TestExternalAddressParsesSOAP(t *testing.T) {
 	defer srv.Close()
 
 	p := NewRouterProber(logging.Discard())
-	addr, err := p.externalAddress(context.Background(), srv.URL, svcWANIPConnection)
+	addr, err := p.externalAddress(context.Background(), srv.URL, testWANService)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestExternalAddressRejectsUnspecified(t *testing.T) {
 	defer srv.Close()
 
 	p := NewRouterProber(logging.Discard())
-	if _, err := p.externalAddress(context.Background(), srv.URL, svcWANIPConnection); err == nil {
+	if _, err := p.externalAddress(context.Background(), srv.URL, testWANService); err == nil {
 		t.Fatal("0.0.0.0 must not be accepted as an external address")
 	}
 }
@@ -172,7 +172,7 @@ func TestExternalAddressRejectsGarbage(t *testing.T) {
 			io.WriteString(w, body)
 		}))
 		p := NewRouterProber(logging.Discard())
-		if _, err := p.externalAddress(context.Background(), srv.URL, svcWANIPConnection); err == nil {
+		if _, err := p.externalAddress(context.Background(), srv.URL, testWANService); err == nil {
 			t.Errorf("accepted %q", body)
 		}
 		srv.Close()
@@ -281,5 +281,74 @@ func TestSummarizePortFallback(t *testing.T) {
 	res := Result{Ports: Ports{Free: map[int]bool{PortPreferred: false, PortFallback: true}}}
 	if s := res.Summarize(); !strings.Contains(s.Ports, "8443") {
 		t.Fatalf("fallback should be explained: %q", s.Ports)
+	}
+}
+
+// testWANService is the version-1 service name, which real version-1 routers
+// report. The product no longer pins to it: see TestVersionTwoIsAccepted.
+const testWANService = "urn:schemas-upnp-org:service:WANIPConnection:1"
+
+// Pinning to version 1 was a wrong assumption twice over. A router that
+// implements IGD version 2 need not answer a search for version 1 at all, and
+// even when it does, its port-mapping service is WANIPConnection:2 -- which
+// RASA rejected as "this router does not offer port opening" while the
+// router's own settings page said UPnP was enabled.
+func TestVersionTwoIsAccepted(t *testing.T) {
+	for _, svc := range []string{
+		"urn:schemas-upnp-org:service:WANIPConnection:1",
+		"urn:schemas-upnp-org:service:WANIPConnection:2",
+		"urn:schemas-upnp-org:service:WANPPPConnection:1",
+		"urn:schemas-upnp-org:service:WANPPPConnection:2",
+	} {
+		if !isWANService(svc) {
+			t.Errorf("%s was not recognised as a port-mapping service", svc)
+		}
+	}
+	for _, other := range []string{
+		"urn:schemas-upnp-org:service:Layer3Forwarding:1",
+		"urn:schemas-upnp-org:service:ContentDirectory:1",
+		"",
+	} {
+		if isWANService(other) {
+			t.Errorf("%q was wrongly taken for a port-mapping service", other)
+		}
+	}
+
+	// And the same at the level that matters: a device tree carrying only the
+	// version 2 service must still yield a control URL.
+	root := upnpDevice{Devices: []upnpDevice{{
+		Services: []upnpSvc{{
+			ServiceType: "urn:schemas-upnp-org:service:WANIPConnection:2",
+			ControlURL:  "/ctl/IPConn",
+		}},
+	}}}
+	url, svcType := findWANService(&root, "http://192.168.1.1:5000/desc.xml")
+	if url == "" {
+		t.Fatal("a version 2 gateway offers no port opening, according to this")
+	}
+	if svcType != "urn:schemas-upnp-org:service:WANIPConnection:2" {
+		t.Errorf("service type = %q; the SOAP calls need the version the router actually speaks", svcType)
+	}
+}
+
+// The search has to ask for both versions, or a version 2 router never answers
+// and the whole thing looks like UPnP being switched off.
+func TestTheSearchAsksForBothGatewayVersions(t *testing.T) {
+	var one, two, backstop bool
+	for _, st := range searchTargets {
+		switch {
+		case strings.Contains(st, "InternetGatewayDevice:1"):
+			one = true
+		case strings.Contains(st, "InternetGatewayDevice:2"):
+			two = true
+		case st == "upnp:rootdevice":
+			backstop = true
+		}
+	}
+	if !one || !two {
+		t.Errorf("searchTargets = %v, want both gateway versions", searchTargets)
+	}
+	if !backstop {
+		t.Error("no upnp:rootdevice backstop, so a router that spells its type unusually is invisible")
 	}
 }
