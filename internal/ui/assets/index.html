@@ -190,13 +190,31 @@
       <!-- Shown when the router never offered automatic port mapping. Without
            it the user has no way to know the feature exists, that their router
            has it switched off, or that turning it on would skip this screen
-           entirely. -->
+           entirely.
+
+           "It is usually under the router's advanced or network settings" was
+           the whole of the where, and it was reported as no help at all in
+           finding it. Everything specific RASA knows now goes in: the exact
+           menu path when the catalogue has a verified one, the admin page as a
+           link either way, and the other names the setting hides behind. -->
       <div class="notice" id="port-upnp" hidden>
-        <strong>Your router can probably do this for you.</strong>
-        Most routers have a setting called <strong>UPnP</strong>, and yours has
-        it switched off. If you turn it on and press Test again, RASA can open
-        the port itself and you can skip the steps below. It is usually under
-        the router's advanced or network settings.
+        <p>
+          <strong>Your router can probably do this for you.</strong>
+          Routers can open ports by themselves using a setting called
+          <strong>UPnP</strong>. Yours has it switched off, or does not have it.
+        </p>
+        <p id="port-upnp-where"></p>
+        <p id="port-upnp-names" hidden>
+          It may be written <strong>UPnP</strong>, <strong>Universal Plug and
+          Play</strong>, <strong>UPnP IGD</strong> or <strong>NAT-PMP</strong>,
+          and it usually sits under Advanced, NAT, Firewall or Network settings.
+        </p>
+        <p>
+          Turn it on, save, then choose <strong>Test again</strong> — RASA will
+          open the port itself and you can skip the steps below. Some routers,
+          especially ones supplied by an internet provider, do not offer it at
+          all. If you cannot find it, the steps below do the same job by hand.
+        </p>
       </div>
       <div id="port-guide" hidden>
         <h2 id="port-router"></h2>
@@ -205,9 +223,19 @@
              page title, and a wrong guess is worse than the generic guide: it
              sends someone hunting for a menu their model does not have. -->
         <p class="hint" id="port-guess" hidden>
-          These steps are for a <strong id="port-guess-name"></strong>, which is
-          what your router seems to be.
+          <span id="port-guess-text"></span>
           <button class="link" type="button" data-action="port-generic">Not my router — show general steps</button>
+        </p>
+        <!-- The way forward when identification failed, which it does whenever
+             the router will not say what it is: UPnP off, an admin page that
+             names nothing, and a MAC prefix nobody has verified. The user can
+             read the label on the box. Without this the screen said "your
+             router" and offered general steps with no way to improve on them. -->
+        <p class="hint" id="port-pick" hidden>
+          <label for="port-router-select" id="port-pick-label"></label>
+          <select id="port-router-select">
+            <option value="">Choose your router…</option>
+          </select>
         </p>
         <!-- The catalogue's warning about the step people actually get stuck
              on for this router. It reached the recovery file and never this

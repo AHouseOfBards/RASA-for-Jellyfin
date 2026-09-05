@@ -96,6 +96,12 @@ type Router struct {
 	// UPnP is off entirely. It is the only identification tier that needs no
 	// cooperation from the router.
 	MAC string
+
+	// Banner is what the gateway's own web server says about itself: its
+	// Server header, its authentication realm, and the title of whatever page
+	// it serves at the root. Read only when UPnP named no vendor, which is
+	// exactly when it is needed — see banner.go.
+	Banner string
 }
 
 // Ports records local availability. This is about what is bound on this

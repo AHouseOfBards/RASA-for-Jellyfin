@@ -153,6 +153,25 @@ type PortView struct {
 	// GenericRequested is true once the user has said the specific guide does
 	// not match, and has been given the generic one instead.
 	GenericRequested bool `json:"generic_requested,omitempty"`
+	// RouterChosen is the catalogue key the user picked by hand, empty when
+	// they have not picked one.
+	//
+	// Automatic identification needs the router to cooperate: UPnP switched
+	// on, an admin page that names itself, or a MAC prefix verified on real
+	// hardware. When none of that happens the screen used to say "your router"
+	// and offer the generic guide with no way forward, which is a dead end in
+	// front of someone who can simply read the label on the box.
+	RouterChosen string `json:"router_chosen,omitempty"`
+	// RouterOptions is every router the catalogue knows, for that picker.
+	RouterOptions []RouterOption `json:"router_options,omitempty"`
+	// AdminURL is the router's own settings page, so the screen can link to it
+	// rather than describing how to reach it.
+	AdminURL string `json:"admin_url,omitempty"`
+	// UPnPPath is where this router hides the setting that would let RASA do
+	// this step by itself. Empty when the catalogue has no verified path, in
+	// which case the screen says what the setting is called instead of
+	// pretending to know where it is.
+	UPnPPath string `json:"upnp_path,omitempty"`
 	// Instructions is the rendered guide, shown only when there is work to do.
 	Instructions []GuideStep `json:"instructions,omitempty"`
 	// RouterNote is the catalogue's warning about the step people actually get
@@ -181,6 +200,12 @@ type PortView struct {
 	// straight through to manual instructions, and nothing said that a setting
 	// existed which would have skipped the whole step.
 	AutomaticOff bool `json:"automatic_off,omitempty"`
+}
+
+// RouterOption is one router the user can pick from.
+type RouterOption struct {
+	Key  string `json:"key"`
+	Name string `json:"name"`
 }
 
 // GuideStep is one instruction line.

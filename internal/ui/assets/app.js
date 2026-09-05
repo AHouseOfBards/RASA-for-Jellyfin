@@ -377,12 +377,102 @@ function updatePreview() {
   document.getElementById("name-submit").disabled = label.length === 0;
 }
 
+// The "turn UPnP on and skip all of this" notice.
+//
+// Everything specific RASA knows goes in, because the previous version said
+// only that the setting was "usually under the router's advanced or network
+// settings" and that was reported as no help at all in actually finding it.
+// The catalogue's verified path when there is one, the admin page as a real
+// link either way, and the four names the setting goes by otherwise.
+function renderUPnPNotice(p) {
+  const box = document.getElementById("port-upnp");
+  box.hidden = !p.automatic_off;
+  if (box.hidden) return;
+
+  const where = document.getElementById("port-upnp-where");
+  where.replaceChildren();
+
+  if (p.upnp_path) {
+    // A path checked against that vendor's own documentation. Naming the
+    // router it belongs to matters: it is why the user should believe it, and
+    // it is how they notice when the router is not theirs.
+    where.append(`On your ${p.router_name} it is under `);
+    const path = document.createElement("strong");
+    path.textContent = p.upnp_path;
+    where.append(path, ". ");
+  }
+  if (p.admin_url) {
+    where.append("Your router's settings are at ");
+    const a = document.createElement("a");
+    a.href = p.admin_url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.textContent = p.admin_url;
+    where.append(a, ".");
+  } else {
+    where.append("Open your router's settings page and sign in.");
+  }
+
+  // Only when there is no exact path to follow. Listing the aliases under a
+  // path that names the menu outright is noise.
+  document.getElementById("port-upnp-names").hidden = !!p.upnp_path;
+}
+
+// Which router the steps are for, and how to change it.
+//
+// No "a" or "an" in front of the name: the catalogue holds ASUS, eero,
+// Xfinity and Ubiquiti, and no rule picks the right article for all four.
+// Leaving it out reads correctly for every name in the file.
+//
+// Three states, because they need three different sentences: RASA worked it
+// out (say so, and hedge — it is a guess), the user chose it (say so, and do
+// not hedge), or nobody knows (say that too, rather than the silence that
+// followed "your router" before, and offer the list).
+function renderRouterChoice(p) {
+  const guess = document.getElementById("port-guess");
+  const text = document.getElementById("port-guess-text");
+  const pick = document.getElementById("port-pick");
+  const label = document.getElementById("port-pick-label");
+
+  const identified = p.router_guessed || p.router_chosen;
+  guess.hidden = !identified;
+  if (p.router_guessed) {
+    text.textContent = `These steps are for ${p.router_name}, which is what your router seems to be.`;
+  } else if (p.router_chosen) {
+    text.textContent = `These steps are for ${p.router_name}, which is what you chose.`;
+  }
+
+  const options = p.router_options || [];
+  pick.hidden = options.length === 0;
+  if (pick.hidden) return;
+
+  label.textContent = identified
+    ? "Wrong one? Pick your router:"
+    : "RASA couldn't work out which router you have, so these are the general steps. Pick yours for the exact menu path:";
+
+  const select = document.getElementById("port-router-select");
+  // Rebuilt on every render, so the selection has to be restored from the
+  // model rather than left to the browser.
+  select.replaceChildren();
+  const blank = document.createElement("option");
+  blank.value = "";
+  blank.textContent = "Choose your router…";
+  select.appendChild(blank);
+  for (const o of options) {
+    const opt = document.createElement("option");
+    opt.value = o.key;
+    opt.textContent = o.name;
+    select.appendChild(opt);
+  }
+  select.value = p.router_chosen || "";
+}
+
 function renderPort() {
   const p = model.port || {};
   const guide = document.getElementById("port-guide");
   const lede = document.getElementById("port-lede");
 
-  document.getElementById("port-upnp").hidden = !p.automatic_off;
+  renderUPnPNotice(p);
 
   if (!p.instructions || p.instructions.length === 0) {
     guide.hidden = true;
@@ -406,11 +496,7 @@ function renderPort() {
 
   document.getElementById("port-router").textContent = p.router_name || "Your router";
 
-  const guess = document.getElementById("port-guess");
-  guess.hidden = !p.router_guessed;
-  if (p.router_guessed) {
-    document.getElementById("port-guess-name").textContent = p.router_name || "";
-  }
+  renderRouterChoice(p);
 
   const note = document.getElementById("port-note");
   note.textContent = p.router_note || "";
@@ -580,6 +666,9 @@ function render(next) {
   }
   document.getElementById("name-submit").disabled =
     model.busy || document.getElementById("name-label").value.trim().length === 0;
+  // The loop above only reaches buttons, and this is the one control on the
+  // journey that is not one.
+  document.getElementById("port-router-select").disabled = model.busy;
 
   // The server decides where back can go, because it is the only thing that
   // knows what has already been created for real.
@@ -790,6 +879,13 @@ function wire() {
   document.getElementById("confirm-create").addEventListener("click", () => {
     closeConfirm();
     submitName();
+  });
+
+  // A select, so it acts on change rather than through the click delegate
+  // below. Choosing is the whole gesture; a separate Apply button would be one
+  // more thing to miss.
+  document.getElementById("port-router-select").addEventListener("change", (e) => {
+    if (e.target.value) post("/api/port/router", { router: e.target.value });
   });
 
   for (const b of document.querySelectorAll("[data-toggle]")) {

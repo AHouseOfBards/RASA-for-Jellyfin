@@ -146,6 +146,11 @@ UPnP is the happy path; manual forwarding is the fallback that always works. Gen
 | **IGD device description** — fetch the XML SSDP points at, read `manufacturer`, `modelName`, `modelNumber` | Exact make and model | UPnP enabled — covers "UPnP on but mapping refused" |
 | **Gateway HTTP banner** — request the gateway admin page, read title and server header | Usually vendor | UPnP off but admin interface answers |
 | **Gateway MAC OUI** — gateway MAC from the ARP table, vendor prefix lookup | Vendor only | **Always** — needs no router cooperation |
+| **The user** — a picker listing every router in the catalogue | Exact make | Always, and it is the only tier that needs nothing from the router |
+
+> **Every tier above has to actually be wired up, and the banner one was not until 0.9.** `probe.Router` carried no `Banner` field, so `Match` was only ever given a vendor string and a MAC. That killed the tier in precisely the case it was written for: a router with UPnP off reports no vendor at all, so identification fell straight through to the OUI, and the OUI lists are sparse by design. Almost everyone who most needed router-specific instructions got the generic guide. Reported from a real run whose screen said "your router" and offered nothing better.
+
+> **Ask the user when the network will not say.** The first three tiers all need the router to cooperate, and when none of them fires the guide is generic and there is no way forward from it — in front of someone who can read the label on the box. The picker is the last tier for that reason, and choosing overrides identification rather than being overridden by it.
 
 Ship the OUI table and router instructions as data files in the repo, fetched at runtime with a baked-in fallback. New routers become a pull request, not a release.
 
@@ -155,7 +160,9 @@ Ship the OUI table and router instructions as data files in the repo, fetched at
   "asus": {
     "match": { "oui": ["00:1F:C6", "2C:56:DC"], "banner": ["ASUS"] },
     "path":  "WAN → Virtual Server / Port Forwarding",
-    "note":  "Set 'Enable Port Forwarding' to Yes before the table accepts rows."
+    "note":  "Set 'Enable Port Forwarding' to Yes before the table accepts rows.",
+    "upnpPath":   "Advanced Settings → WAN → Basic Config → Enable UPnP",
+    "upnpSource": "https://www.asus.com/us/support/faq/1039292/"
   },
   "tp-link": {
     "match": { "banner": ["TP-Link", "Archer"] },
@@ -183,6 +190,8 @@ The menu path is the smaller half. The values are what users get wrong, and RASA
 | Internal and external port | The chosen listener port — 443, or 8443 on fallback |
 | Protocol | TCP |
 | Service name | A suggested label, recognisable in a year |
+
+> 🔴 **"Turn UPnP on" needs a where, not a hand-wave.** When the router never offered automatic mapping, switching the setting on skips this whole screen — the single most valuable thing RASA can say here. Saying it is "usually under the router's advanced or network settings" was reported as no help at all in finding it. Give the catalogue's verified path for that model, the admin page as a link either way, the other names the setting goes by (UPnP, Universal Plug and Play, UPnP IGD, NAT-PMP), and the honest caveat that ISP-supplied routers often do not have it. `upnpPath` is optional and carries its own `upnpSource`: a menu path nobody checked reads exactly as confidently as one that was, and here a wrong path costs more than a missing one, because it is offered as the way to avoid the manual guide entirely.
 
 > 🔴 **The DHCP reservation is not optional.** A static forward points at a fixed LAN address. If this host holds an ordinary DHCP lease, that address will change and the forward points at nothing — the most common reason a manual forward works for weeks then silently stops. Detect whether the address is leased or static, and when leased, treat reserving it as **part of the instructions**. It lives in the same router UI, usually one menu away.
 

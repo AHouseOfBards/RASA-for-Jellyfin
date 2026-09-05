@@ -365,6 +365,26 @@ button:disabled { opacity: 0.5; cursor: default; }
   max-width: var(--measure);
 }
 
+/* The UPnP notice is several paragraphs now — what the setting is, where this
+   particular router keeps it, and what to do when it isn't there at all — and
+   the default paragraph margin would push the first and last of them against
+   the card's own padding. */
+.notice p { margin: 0 0 10px; }
+.notice p:last-child { margin-bottom: 0; }
+
+/* The router picker, offered when nothing identified the router. The label is
+   a full sentence rather than a word, so it wraps above the control on a
+   narrow window instead of squeezing it. */
+#port-pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+#port-router-select { width: auto; }
+
 .problem { border-left: 4px solid var(--bad); }
 /* A screen that hosts its own problem box keeps the element in the page and
    fills it only when something failed. Without this the name picker shows an

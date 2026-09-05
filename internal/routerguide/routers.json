@@ -16,7 +16,11 @@
     "OUI lists are sparse on purpose: a wrong prefix produces confidently wrong instructions,",
     "which is worse than the generic fallback. Only add prefixes you have verified on hardware.",
     "",
-    "Menu paths vary by firmware version. Keep 'note' for the step people actually get stuck on."
+    "Menu paths vary by firmware version. Keep 'note' for the step people actually get stuck on.",
+    "",
+    "'upnpPath' is where automatic port opening is switched on, cited by its own 'upnpSource'.",
+    "It is optional, and it is the field most worth leaving blank when unsure: it is offered as a",
+    "way to skip the manual guide entirely, so a wrong path costs more than no path at all."
   ],
 
   "asus": {
@@ -26,6 +30,8 @@
       "banner": ["ASUS"]
     },
     "path": "WAN → Virtual Server / Port Forwarding",
+    "upnpPath": "Advanced Settings → WAN → Basic Config → Enable UPnP",
+    "upnpSource": "https://www.asus.com/us/support/faq/1039292/",
     "note": "Switch 'Enable Port Forwarding' to ON before adding a rule. It is off by default, and the table will not accept rows until it is on. Then use 'Add profile'. Older ASUSWRT calls the page Virtual Server only, with the rules in a table on the page rather than behind Add profile.",
     "reservationPath": "LAN → DHCP Server → Manually Assigned IP around the DHCP list",
     "source": "https://www.asus.com/support/faq/1037906/"
@@ -38,6 +44,8 @@
       "banner": ["TP-Link", "Archer"]
     },
     "path": "Advanced → NAT Forwarding → Virtual Servers",
+    "upnpPath": "Advanced → NAT Forwarding → UPnP",
+    "upnpSource": "https://www.tp-link.com/us/support/faq/4624/",
     "note": "Depending on the model this is called 'Virtual Servers' or 'Port Forwarding'. Older firmware puts it under Forwarding → Virtual Servers instead, with no Advanced tab.",
     "reservationPath": "Advanced → Network → DHCP Server → Address Reservation",
     "source": "https://www.tp-link.com/us/user-guides/archer-a7&c7_v5/chapter-13-nat-forwarding"
@@ -50,6 +58,8 @@
       "banner": ["NETGEAR"]
     },
     "path": "ADVANCED → Advanced Setup → Port Forwarding / Port Triggering",
+    "upnpPath": "ADVANCED → Advanced Setup → UPnP → Turn UPnP On",
+    "upnpSource": "https://kb.netgear.com/24306/How-do-I-enable-or-disable-Universal-Plug-and-Play-on-my-NETGEAR-router",
     "note": "Choose 'Port Forwarding' rather than 'Port Triggering' — they are different features. Then use 'Add Custom Service' rather than picking from the service list. Older Smart Wizard firmware has no Advanced Setup level: it is simply Advanced → Port Forwarding / Port Triggering.",
     "reservationPath": "ADVANCED → Setup → LAN Setup → Address Reservation",
     "source": "https://kb.netgear.com/24289/How-do-I-set-up-port-forwarding-to-a-local-server-on-my-NETGEAR-router"
@@ -74,6 +84,8 @@
       "banner": ["Linksys"]
     },
     "path": "Security → Apps and Gaming → Single Port Forwarding",
+    "upnpPath": "Connectivity → Administration → UPnP",
+    "upnpSource": "https://support.linksys.com/kb/article/292-en/",
     "note": "On older classic-firmware routers, the WRT series among them, Applications & Gaming is a tab of its own along the top rather than sitting under Security. The Linksys app has the same thing under the router's settings.",
     "reservationPath": "Connectivity → Local Network → DHCP Reservations",
     "source": "https://support.linksys.com/kb/article/310-en/"
@@ -86,6 +98,8 @@
       "banner": ["UniFi", "Ubiquiti"]
     },
     "path": "Settings → Policy Engine → Port Forwarding",
+    "upnpPath": "Settings → Internet → UPnP",
+    "upnpSource": "https://help.ui.com/hc/en-us/articles/12648697125783-UniFi-Gateway-UPnP",
     "note": "UniFi has moved this twice. On Network 9.3 it is Settings → Policy Table → Create New Policy → Port Forwarding; on older releases, Settings → Firewall & Security → Port Forwarding, and older still, Settings → Routing & Firewall.",
     "reservationPath": "Client Devices → the device → Settings → Fixed IP Address",
     "source": "https://help.ui.com/hc/en-us/articles/235723207-UniFi-Gateway-Port-Forwarding"
@@ -284,7 +298,7 @@
   },
 
   "_default": {
-    "name": "your router",
+    "name": "Your router",
     "match": {},
     "path": "the section called 'Port Forwarding', 'Virtual Server', 'NAT', or 'Applications & Gaming'",
     "note": "Menu names vary between manufacturers and firmware versions.",

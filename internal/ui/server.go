@@ -184,6 +184,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/port/generic", s.guard(s.async("port", func(ctx context.Context, body request) error {
 		return s.w.UseGenericGuide(ctx)
 	})))
+	s.mux.HandleFunc("/api/port/router", s.guard(s.async("port", func(ctx context.Context, body request) error {
+		return s.w.ChooseRouter(ctx, body.Router)
+	})))
 	s.mux.HandleFunc("/api/port/skip", s.guard(s.async("port", func(ctx context.Context, body request) error {
 		return s.w.SkipPort(ctx)
 	})))
@@ -206,6 +209,9 @@ type request struct {
 	Key      string `json:"key,omitempty"`
 	Label    string `json:"label,omitempty"`
 	Parent   string `json:"parent,omitempty"`
+	// Router is a routerguide catalogue key, from the picker on the port
+	// screen. Validated against the catalogue by the wizard, not here.
+	Router string `json:"router,omitempty"`
 }
 
 // guard authenticates the request and refuses cross-origin callers.

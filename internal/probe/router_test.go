@@ -184,6 +184,11 @@ func TestRouterProbeSurvivesNoRouter(t *testing.T) {
 	// error: it means guided manual forwarding.
 	p := NewRouterProber(logging.Discard())
 	p.SearchTimeout = 300 * time.Millisecond
+	// This is the one probe that talks to whatever gateway the machine running
+	// the tests happens to sit behind. The banner tier reads its admin page,
+	// and a gateway that answers slowly would otherwise spend the full default
+	// budget here every run.
+	p.BannerTimeout = 200 * time.Millisecond
 
 	got := p.Probe(context.Background())
 	if got.PortMappingAvailable && !got.WANAddress.IsValid() {

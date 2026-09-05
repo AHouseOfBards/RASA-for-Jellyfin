@@ -47,6 +47,17 @@ type Entry struct {
 	Match Match  `json:"match"`
 	Path  string `json:"path"`
 	Note  string `json:"note,omitempty"`
+	// UPnPPath is where automatic port opening is switched on.
+	//
+	// Turning it on skips this entire screen, which makes it the most valuable
+	// sentence RASA can put in front of someone whose router has it off — and
+	// "it is usually under advanced settings" is not that sentence. Optional:
+	// an entry without one falls back to describing what the setting is called,
+	// which is still better than a menu path invented for a router nobody
+	// checked.
+	UPnPPath string `json:"upnpPath,omitempty"`
+	// UPnPSource cites UPnPPath, for the same reason Source cites Path.
+	UPnPSource string `json:"upnpSource,omitempty"`
 	// ReservationPath is where the DHCP reservation lives. It is part of the
 	// instructions rather than an afterthought: a static forward pointed at a
 	// leased address breaks weeks later when the lease moves, which is the
@@ -129,6 +140,35 @@ func LoadFrom(r io.Reader) (*Catalog, error) {
 
 // Len reports how many routers are known, excluding the fallback.
 func (c *Catalog) Len() int { return len(c.entries) - 1 }
+
+// All returns every recognised router, ordered by name, excluding the generic
+// fallback.
+//
+// It backs the "which router do you have?" picker. Automatic identification
+// needs the router to cooperate — UPnP switched on, or an admin page that
+// names itself, or a MAC prefix someone has verified on hardware — and when
+// none of that happens the user is still perfectly capable of reading the
+// label on the box. Making them the last identification tier turns a dead end
+// into an exact menu path.
+func (c *Catalog) All() []Entry {
+	out := make([]Entry, 0, len(c.entries))
+	for _, k := range c.order {
+		if k == DefaultKey {
+			continue
+		}
+		out = append(out, c.entries[k])
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+	})
+	return out
+}
+
+// Lookup returns the entry stored under a catalogue key.
+func (c *Catalog) Lookup(key string) (Entry, bool) {
+	e, ok := c.entries[key]
+	return e, ok
+}
 
 // Identity is what the probe learned about the router.
 type Identity struct {
@@ -233,9 +273,13 @@ type Instructions struct {
 	RouterName string
 	AdminURL   string
 	MenuPath   string
-	Note       string
-	Fields     []Field
-	Steps      []string
+	// UPnPPath is where this router hides the automatic port opening setting,
+	// when the catalogue knows. Empty means "say what it is called instead of
+	// where it is".
+	UPnPPath string
+	Note     string
+	Fields   []Field
+	Steps    []string
 	// ReservationRequired is true when this machine's address is leased and
 	// would otherwise change, breaking the forward.
 	ReservationRequired bool
@@ -253,6 +297,7 @@ func Build(e Entry, v Values) Instructions {
 	ins := Instructions{
 		RouterName:          e.Name,
 		MenuPath:            e.Path,
+		UPnPPath:            e.UPnPPath,
 		Note:                e.Note,
 		ReservationRequired: v.AddressIsDHCP,
 		ReservationPath:     e.ReservationPath,

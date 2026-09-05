@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+	"unicode"
 )
 
 func catalog(t *testing.T) *Catalog {
@@ -443,5 +444,85 @@ func TestEntriesWhoseVendorMovedThePageNameTheOldOne(t *testing.T) {
 		if !strings.Contains(strings.ToLower(e.Note), "older") {
 			t.Errorf("%s: note does not mention the older firmware path", e.Name)
 		}
+	}
+}
+
+// The generic name is the heading of the port screen and the subject of the
+// sentence under it, never a mid-sentence mention. It shipped as "your router"
+// and rendered as a lowercase heading directly under a capitalised one.
+func TestTheGenericNameReadsAsTheStartOfASentence(t *testing.T) {
+	c := catalog(t)
+	name := c.Generic().Name
+	if name == "" {
+		t.Fatal("the fallback has no name")
+	}
+	if r := []rune(name)[0]; !unicode.IsUpper(r) {
+		t.Errorf("the fallback is called %q, which is rendered as a heading and has to be capitalised", name)
+	}
+}
+
+// Same standard as Path and Source: a menu path nobody checked reads exactly
+// as confidently as one that was checked. A wrong UPnP path costs more than an
+// absent one, because it is offered as the way to skip the whole manual guide.
+func TestEveryUPnPPathIsCited(t *testing.T) {
+	c := catalog(t)
+	for _, k := range c.order {
+		e := c.entries[k]
+		if e.UPnPPath != "" && strings.TrimSpace(e.UPnPSource) == "" {
+			t.Errorf("%s: has a UPnP path with no source", k)
+		}
+		if e.UPnPSource != "" && e.UPnPPath == "" {
+			t.Errorf("%s: cites a UPnP source but has no path", k)
+		}
+	}
+}
+
+func TestBuildCarriesTheUPnPPathToTheScreen(t *testing.T) {
+	c := catalog(t)
+	e, ok := c.Lookup("netgear")
+	if !ok {
+		t.Fatal("no netgear entry")
+	}
+	if e.UPnPPath == "" {
+		t.Skip("netgear has no UPnP path in the catalogue")
+	}
+	ins := Build(e, Values{Port: 443})
+	if ins.UPnPPath != e.UPnPPath {
+		t.Errorf("UPnPPath = %q, want %q", ins.UPnPPath, e.UPnPPath)
+	}
+}
+
+// All backs the picker offered when nothing identified the router. The
+// fallback must not be in it: "Your router" as an option to choose is the
+// state the user is already in.
+func TestAllListsEveryRouterButTheFallback(t *testing.T) {
+	c := catalog(t)
+	all := c.All()
+	if len(all) != c.Len() {
+		t.Fatalf("All returned %d entries, catalogue has %d routers", len(all), c.Len())
+	}
+	var last string
+	for _, e := range all {
+		if e.IsDefault() {
+			t.Error("the generic fallback is offered as a router to pick")
+		}
+		if e.Key() == "" {
+			t.Errorf("%q has no key, so it cannot be chosen", e.Name)
+		}
+		if name := strings.ToLower(e.Name); name < last {
+			t.Errorf("out of order: %q came after %q", e.Name, last)
+		} else {
+			last = name
+		}
+	}
+}
+
+func TestLookupFindsAndRefuses(t *testing.T) {
+	c := catalog(t)
+	if e, ok := c.Lookup("tplink"); !ok || e.Name != "TP-Link" {
+		t.Errorf("Lookup(tplink) = %q, %v", e.Name, ok)
+	}
+	if _, ok := c.Lookup("nosuchrouter"); ok {
+		t.Error("Lookup invented a router")
 	}
 }

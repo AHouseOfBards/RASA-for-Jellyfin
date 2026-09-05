@@ -1,10 +1,13 @@
 package ui
 
 import (
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/wizard"
 )
 
 func asset(t *testing.T, name string) string {
@@ -118,5 +121,49 @@ func TestTheTokenIsSubstitutedRatherThanShipped(t *testing.T) {
 		if strings.Contains(strings.ToLower(html), leak) {
 			t.Errorf("the shipped page appears to contain a literal token: %q", leak)
 		}
+	}
+}
+
+// The script reads the port view field by field, by name, with no build step
+// and nothing that would notice a rename. A field renamed in Go becomes
+// undefined in the browser, and undefined renders as a hidden element or a
+// blank line rather than an error — on the one screen that exists because
+// something has already gone wrong.
+func TestThePortScreenOnlyReadsFieldsThePortViewSends(t *testing.T) {
+	js := asset(t, "app.js")
+
+	tags := map[string]bool{}
+	v := reflect.TypeOf(wizard.PortView{})
+	for i := 0; i < v.NumField(); i++ {
+		tag := v.Field(i).Tag.Get("json")
+		if tag == "" || tag == "-" {
+			continue
+		}
+		tags[strings.Split(tag, ",")[0]] = true
+	}
+	if len(tags) < 10 {
+		t.Fatalf("PortView has only %d json fields; the reflection has probably stopped working", len(tags))
+	}
+
+	reads := regexp.MustCompile(`\bp\.([a-z_]+)\b`).FindAllStringSubmatch(js, -1)
+	if len(reads) < 10 {
+		t.Fatalf("found only %d port field reads; the pattern has probably stopped matching", len(reads))
+	}
+
+	var unknown []string
+	seen := map[string]bool{}
+	for _, m := range reads {
+		f := m[1]
+		if seen[f] {
+			continue
+		}
+		seen[f] = true
+		if !tags[f] {
+			unknown = append(unknown, f)
+		}
+	}
+	sort.Strings(unknown)
+	if len(unknown) > 0 {
+		t.Errorf("the port screen reads fields the wizard never sends: %v", unknown)
 	}
 }

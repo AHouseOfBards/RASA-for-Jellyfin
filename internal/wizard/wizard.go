@@ -105,6 +105,10 @@ type Wizard struct {
 	// not match what is in front of them. Their eyes beat a UPnP vendor string.
 	wantGenericGuide bool
 
+	// chosenRouter is the catalogue key the user picked by hand, which beats
+	// both of the above for the same reason.
+	chosenRouter string
+
 	busy bool
 	subs map[chan Model]struct{}
 }
@@ -1076,17 +1080,29 @@ func (w *Wizard) showGuide(res probe.Result, d mode.Decision, mapped *state.Port
 		w.log.Error("router catalogue unavailable", slog.Any("err", err))
 		return
 	}
-	entry := cat.Match(routerguide.Identity{
+	matched := cat.Match(routerguide.Identity{
 		Vendor: res.Router.Vendor,
 		Model:  res.Router.Model,
+		// The tier that matters when UPnP is off, which is exactly when this
+		// screen is being looked at. See probe/banner.go.
+		Banner: res.Router.Banner,
 		MAC:    res.Router.MAC,
 	})
-	// The user has looked at the specific guide and said it does not match
-	// their router. Their eyes beat a UPnP vendor string.
+
 	w.mu.Lock()
-	generic := w.wantGenericGuide
+	generic, chosen := w.wantGenericGuide, w.chosenRouter
 	w.mu.Unlock()
-	if generic {
+
+	// What the user said last wins over what the network said, in both
+	// directions: they can see the router and RASA is inferring it from a
+	// vendor string, an admin page title, or a MAC prefix.
+	entry := matched
+	switch {
+	case chosen != "":
+		if e, ok := cat.Lookup(chosen); ok {
+			entry = e
+		}
+	case generic:
 		entry = cat.Generic()
 	}
 	ins := routerguide.Build(entry, routerguide.Values{
@@ -1107,11 +1123,22 @@ func (w *Wizard) showGuide(res probe.Result, d mode.Decision, mapped *state.Port
 	)
 
 	view := PortView{
-		Needed:           true,
-		RouterName:       ins.RouterName,
-		RouterNote:       ins.Note,
-		RouterGuessed:    !ins.Generic,
+		Needed:     true,
+		RouterName: ins.RouterName,
+		RouterNote: ins.Note,
+		// Guessed means RASA worked it out, so it is not claimed for a router
+		// the user picked off the list themselves: the "which is what your
+		// router seems to be" hedge is nonsense next to their own choice.
+		RouterGuessed:    !ins.Generic && chosen == "",
+		RouterChosen:     chosen,
 		GenericRequested: generic,
+		UPnPPath:         ins.UPnPPath,
+		AdminURL:         ins.AdminURL,
+		// Offered whenever RASA is not already showing the router the user
+		// picked. Identification needs the router to cooperate and often it
+		// does not, and someone standing in front of the thing can read the
+		// name off it.
+		RouterOptions: routerOptions(cat),
 		// Only when the router never offered it. A router that offered it and
 		// then refused the mapping is a different problem, and telling that
 		// user to go and enable a setting they already have on wastes their
@@ -1185,12 +1212,61 @@ func (w *Wizard) UseGenericGuide(ctx context.Context) error {
 
 	w.mu.Lock()
 	w.wantGenericGuide = true
+	// Opposites, so asking for the general steps drops a router picked
+	// earlier. Otherwise the choice would keep overriding the request.
+	w.chosenRouter = ""
 	res, d := w.probed, w.decision
 	w.mu.Unlock()
 
 	w.log.WithPhase("portmap").Info("user asked for the generic port forwarding guide")
 	w.showGuide(res, d, w.currentMapping())
 	return nil
+}
+
+// ChooseRouter switches the port screen to the guide for a router the user
+// named themselves.
+//
+// It is the last identification tier and the only one that does not depend on
+// the router being willing to say what it is. An unknown key is refused rather
+// than quietly falling back, so a stale or mistyped choice cannot silently
+// hand someone another router's menu path.
+func (w *Wizard) ChooseRouter(ctx context.Context, key string) error {
+	if err := w.begin(); err != nil {
+		return err
+	}
+	defer w.end()
+
+	cat, err := routerguide.Embedded()
+	if err != nil {
+		return fmt.Errorf("router catalogue unavailable: %w", err)
+	}
+	entry, ok := cat.Lookup(key)
+	if !ok || entry.IsDefault() {
+		return fmt.Errorf("no router called %q", key)
+	}
+
+	w.mu.Lock()
+	w.chosenRouter = key
+	// The two are opposites: having named a router, the user is no longer
+	// asking for the generic guide.
+	w.wantGenericGuide = false
+	res, d := w.probed, w.decision
+	w.mu.Unlock()
+
+	w.log.WithPhase("portmap").Info("user chose their router",
+		slog.String("router", entry.Name))
+	w.showGuide(res, d, w.currentMapping())
+	return nil
+}
+
+// routerOptions lists the catalogue for the picker.
+func routerOptions(cat *routerguide.Catalog) []RouterOption {
+	all := cat.All()
+	out := make([]RouterOption, 0, len(all))
+	for _, e := range all {
+		out = append(out, RouterOption{Key: e.Key(), Name: e.Name})
+	}
+	return out
 }
 
 func (w *Wizard) currentMapping() *state.PortMapping {

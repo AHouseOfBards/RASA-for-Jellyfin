@@ -38,6 +38,11 @@ type RouterProber struct {
 	// within a second or two when they answer at all.
 	SearchTimeout time.Duration
 	Timeout       time.Duration
+	// BannerTimeout bounds the admin-page read that identifies a router with
+	// UPnP switched off. Separate from Timeout because it is spent only in the
+	// case where UPnP already failed, and because it is the one part of this
+	// probe that talks to a device that may simply never answer.
+	BannerTimeout time.Duration
 	Log           *logging.Logger
 }
 
@@ -46,7 +51,12 @@ func NewRouterProber(log *logging.Logger) *RouterProber {
 	if log == nil {
 		log = logging.Discard()
 	}
-	return &RouterProber{SearchTimeout: 3 * time.Second, Timeout: 5 * time.Second, Log: log}
+	return &RouterProber{
+		SearchTimeout: 3 * time.Second,
+		Timeout:       5 * time.Second,
+		BannerTimeout: DefaultBannerTimeout,
+		Log:           log,
+	}
 }
 
 // Probe discovers the gateway and asks for its external address.
@@ -74,10 +84,34 @@ func (p *RouterProber) Probe(ctx context.Context) Router {
 		out.MAC = gatewayMAC(ctx, gw)
 	}
 
+	p.queryIGD(ctx, &out)
+
+	// Only when UPnP told us nothing. A router that answered SSDP has already
+	// named its own manufacturer, which is the more reliable tier of the two,
+	// and fetching an admin page nobody is going to read costs the user
+	// seconds on a screen they are waiting in front of.
+	if out.Vendor == "" && out.Model == "" {
+		out.Banner = readBanner(ctx, out.Gateway, p.BannerTimeout)
+		p.Log.Debug("read gateway banner", slog.String("banner", out.Banner))
+	}
+
+	p.Log.Debug("router probe complete",
+		slog.String("vendor", out.Vendor),
+		slog.String("model", out.Model),
+		slog.Bool("banner_read", out.Banner != ""),
+		slog.Bool("mapping_available", out.PortMappingAvailable),
+		slog.Bool("wan_address_known", out.WANAddress.IsValid()),
+	)
+	return out
+}
+
+// queryIGD fills in everything that only UPnP can tell us. Every failure is
+// soft: a router that does not speak IGD leaves out untouched.
+func (p *RouterProber) queryIGD(ctx context.Context, out *Router) {
 	loc, from, err := p.discover(ctx)
 	if err != nil {
 		p.Log.Debug("no igd discovered", slog.Any("err", err))
-		return out
+		return
 	}
 	// A router that answered SSDP is reachable, and the reply source is its
 	// LAN address — more reliable than parsing a routing table.
@@ -89,7 +123,7 @@ func (p *RouterProber) Probe(ctx context.Context) Router {
 	desc, err := p.describe(ctx, loc)
 	if err != nil {
 		p.Log.Debug("igd description failed", slog.Any("err", err))
-		return out
+		return
 	}
 	out.Vendor = strings.TrimSpace(desc.Device.Manufacturer)
 	out.Model = strings.TrimSpace(firstNonEmpty(desc.Device.ModelName, desc.Device.ModelNumber, desc.Device.FriendlyName))
@@ -97,7 +131,7 @@ func (p *RouterProber) Probe(ctx context.Context) Router {
 	ctrl, svcType := findWANService(&desc.Device, loc)
 	if ctrl == "" {
 		p.Log.Debug("igd has no WAN connection service")
-		return out
+		return
 	}
 	out.ControlURL, out.ServiceType = ctrl, svcType
 	// The device speaks IGD, so a mapping request is at least plausible. It
@@ -111,13 +145,6 @@ func (p *RouterProber) Probe(ctx context.Context) Router {
 		p.Log.Debug("GetExternalIPAddress failed", slog.Any("err", err))
 	}
 
-	p.Log.Debug("router probe complete",
-		slog.String("vendor", out.Vendor),
-		slog.String("model", out.Model),
-		slog.Bool("mapping_available", out.PortMappingAvailable),
-		slog.Bool("wan_address_known", out.WANAddress.IsValid()),
-	)
-	return out
 }
 
 // discover sends an SSDP M-SEARCH and returns the first IGD location found,
