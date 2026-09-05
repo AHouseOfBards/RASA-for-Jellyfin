@@ -2,10 +2,13 @@ package wizard
 
 import (
 	"context"
+	"errors"
+	"net/netip"
 	"strings"
 	"testing"
+	"time"
 
-	"net/netip"
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/caddy"
 
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/mode"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/portmap"
@@ -222,5 +225,60 @@ func TestTheAPIKeyPathLearnsTheBasePathToo(t *testing.T) {
 
 	if got := h.w.Model().Result.URL; got != "https://mymedia.freeddns.org/jellyfin" {
 		t.Errorf("URL = %q, want the base path included", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+
+// The DNS-01 challenge check asks whether a record created moments ago is
+// visible. A public recursive resolver answers that from a negative cache it
+// filled before the record existed, and freeddns.org's SOA tells it to keep
+// that answer for 1800 seconds — so no propagation timeout can outlast it. The
+// zone's own servers cannot be stale about their own zone.
+func TestTheChallengeCheckAsksTheZonesOwnNameservers(t *testing.T) {
+	h := newHarness(t, nil)
+	h.dns.nameservers = []string{"203.0.113.10:53", "203.0.113.11:53"}
+	h.runHappyPath(t)
+
+	cfg := h.prox.installed[len(h.prox.installed)-1]
+	if len(cfg.ExtraResolvers) != 2 || cfg.ExtraResolvers[0] != "203.0.113.10:53" {
+		t.Errorf("challenge resolvers = %v, want the zone's nameservers", cfg.ExtraResolvers)
+	}
+}
+
+// Slower and occasionally wrong beats not issuing a certificate at all.
+func TestAFailedNameserverLookupFallsBackRatherThanFailing(t *testing.T) {
+	h := newHarness(t, nil)
+	h.dns.nsErr = errors.New("no NS records found")
+	h.runHappyPath(t)
+
+	cfg := h.prox.installed[len(h.prox.installed)-1]
+	if len(cfg.ExtraResolvers) != 0 {
+		t.Errorf("ExtraResolvers = %v, want empty so the generator uses its fallback", cfg.ExtraResolvers)
+	}
+	// And the generated file still names resolvers, rather than none at all.
+	text, err := cfg.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "resolvers 1.1.1.1 9.9.9.9") {
+		t.Errorf("no fallback resolvers in the generated config:\n%s", text)
+	}
+}
+
+// The ceiling exceeding the propagation timeout is checked elsewhere. What
+// this adds is the size of the gap: once the record is visible to us, Let's
+// Encrypt still has to look it up from its own vantage points, using resolvers
+// and caches we can neither see nor hurry. Tightening the ceiling towards the
+// propagation timeout would reintroduce the failure that was seen for real —
+// RASA reporting failure at 4m55s, 55 seconds before issuance succeeded.
+func TestTheCertificateWaitLeavesRoomForLetsEncrypt(t *testing.T) {
+	margin := CertificateWait - caddy.PropagationTimeout
+	if margin < 2*time.Minute {
+		t.Errorf("margin is %s, want at least 2m after the record is visible to us", margin)
+	}
+	// And the whole thing stays within what a person will sit through.
+	if CertificateWait > 8*time.Minute {
+		t.Errorf("CertificateWait is %s; that is a long time to watch a progress line", CertificateWait)
 	}
 }

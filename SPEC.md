@@ -98,6 +98,10 @@ HTTP-01 requires port 80 reachable from the internet *before a certificate can b
 
 It also unlocks the fallback that prevents dead ends: with issuance independent of port 80, the proxy can listen on **8443** when 443 is unavailable. Jellyfin clients accept a port in the URL.
 
+> ⚠️ **Point the challenge check at the zone's own nameservers.** Caddy's DNS-01 propagation check asks whether a record created seconds ago is visible. Asked of a public recursive resolver, that question is answered from a negative cache filled *before* the record existed — and `freeddns.org`'s SOA declares a negative-caching TTL of **1800 seconds**, so the wrong answer is held for half an hour. No propagation timeout outlasts that. An authoritative server is never stale about its own zone, and RASA already discovers those nameservers for the A-record wait (`dnswait.Nameservers`). Public resolvers remain the fallback for when discovery fails.
+>
+> This is why the ceiling is minutes rather than tens of minutes. `propagation_timeout` is 3 minutes — above Caddy's 2-minute default, because giving up early burns one of five validations per hostname per hour — and RASA's own ceiling is that plus 3 minutes, because after the record is visible to *us*, Let's Encrypt still looks it up from its own vantage points using caches we cannot see or hurry.
+
 > ⚠️ **Say so in the generated config, or Caddy binds port 80 anyway.** Automatic HTTPS starts a second server on :80 for HTTP-to-HTTPS redirects. RASA only ever forwards 443 or 8443 at the router, so that redirect is unreachable from the internet — while the local bind still collides with IIS, Apache, or anything else holding the port, and Caddy refuses to start when it cannot bind a listener. `auto_https disable_redirects` turns off the redirect and leaves certificate automation alone.
 
 ---

@@ -237,6 +237,12 @@ func (w *Wizard) installProxy(ctx context.Context) error {
 		AccessLogPath: w.opts.Layout.CaddyAccessLog(),
 		ACMECA:        w.opts.ACMECA,
 		Email:         w.opts.Email,
+		// The challenge check asks whether a record that has just been created
+		// is visible. Public recursive resolvers answer that from a negative
+		// cache they filled before it existed, and freeddns.org's SOA tells
+		// them to keep that answer for half an hour. The zone's own servers
+		// cannot be stale about their own zone.
+		ExtraResolvers: w.challengeResolvers(ctx, hostname),
 	}
 	if err := proxy.Install(ctx, cfg, map[string]string{TokenEnvVar: key}); err != nil {
 		w.step(SetupProxy, StepFailed, "")
@@ -304,6 +310,23 @@ func (w *Wizard) storeJellyfinBase(cfg jellyfin.Config) {
 		w.update(func(m *Model) { m.Result.URL = url })
 	}
 	w.save()
+}
+
+// challengeResolvers returns the nameservers Caddy should ask about its own
+// DNS-01 challenge record.
+//
+// Empty on failure, which leaves the generator on its public fallback — the
+// behaviour before this existed. Slower and occasionally wrong beats not
+// issuing a certificate at all.
+func (w *Wizard) challengeResolvers(ctx context.Context, hostname string) []string {
+	ns, err := w.opts.DNSWait.Nameservers(ctx, hostname)
+	if err != nil || len(ns) == 0 {
+		w.log.Warn("could not find the zone's nameservers; the proxy will use public resolvers for its challenge check",
+			slog.Any("err", err))
+		return nil
+	}
+	w.log.Debug("challenge check will use authoritative nameservers", slog.Int("count", len(ns)))
+	return ns
 }
 
 // proxyInstaller builds the real installer unless a test supplied one.

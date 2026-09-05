@@ -3,6 +3,7 @@ package caddy
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func good() Config {
@@ -243,11 +244,17 @@ func TestProductionOmitsACMEOverride(t *testing.T) {
 	}
 }
 
-func TestPropagationTimeoutIsGenerous(t *testing.T) {
-	// Dynu propagation runs to a couple of minutes; the default gives up
-	// sooner and burns a validation attempt.
-	if out := generate(t, good()); !strings.Contains(out, "propagation_timeout 5m") {
+// Longer than Caddy's two-minute default, because giving up early burns a
+// validation attempt against a cap of five per hostname per hour — but written
+// from the constant, so the file and the ceiling RASA enforces cannot drift
+// apart.
+func TestPropagationTimeoutIsGenerousButNamed(t *testing.T) {
+	out := generate(t, good())
+	if !strings.Contains(out, "propagation_timeout "+PropagationTimeout.String()) {
 		t.Fatalf("propagation timeout missing:\n%s", out)
+	}
+	if PropagationTimeout < 2*time.Minute {
+		t.Errorf("propagation timeout is %s, below Caddy's own default", PropagationTimeout)
 	}
 }
 

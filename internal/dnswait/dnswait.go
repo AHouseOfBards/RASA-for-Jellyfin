@@ -119,7 +119,7 @@ func (w *Waiter) wait(ctx context.Context, name, kind string,
 	ctx, cancel := context.WithTimeout(ctx, w.Timeout)
 	defer cancel()
 
-	servers, err := w.nameservers(ctx, name)
+	servers, err := w.Nameservers(ctx, name)
 	if err != nil || len(servers) == 0 {
 		// Without authoritative servers there is nothing trustworthy to poll.
 		// Falling back to the system resolver would reintroduce the negative
@@ -164,12 +164,18 @@ func (w *Waiter) wait(ctx context.Context, name, kind string,
 	}
 }
 
-// nameservers returns the addresses of the zone's authoritative nameservers.
+// Nameservers returns the addresses of the zone's authoritative nameservers,
+// as host:port ready to dial.
 //
 // The zone is found by walking up from the hostname: for a Dynu DDNS hostname
 // the NS records sit at the hostname itself, whereas for a normal subdomain
 // they sit on a parent. Walking handles both without needing to know which.
-func (w *Waiter) nameservers(ctx context.Context, name string) ([]string, error) {
+//
+// Exported because the ACME client needs the same list for the same reason.
+// Its DNS-01 propagation check asks whether the challenge record is visible
+// yet, and asking a caching resolver that question is how you get told "no"
+// for half an hour after the answer became yes — see the package comment.
+func (w *Waiter) Nameservers(ctx context.Context, name string) ([]string, error) {
 	if len(w.Servers) > 0 {
 		return w.Servers, nil
 	}

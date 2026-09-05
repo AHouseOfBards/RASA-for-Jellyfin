@@ -35,7 +35,16 @@ import (
 // RASA's own certificate wait was once the same five minutes, so a stalled
 // challenge made RASA report failure at the exact moment Caddy was still
 // working — observed on a real run, which failed at 4m55s and told us nothing.
-const PropagationTimeout = 5 * time.Minute
+//
+// Three minutes rather than the five it used to be, because the check is now
+// pointed at the zone's authoritative nameservers instead of public recursive
+// ones. Most of the old wait was never propagation: freeddns.org's SOA
+// declares a negative-caching TTL of 1800 seconds, so a public resolver asked
+// for the challenge record before it existed keeps answering "no such name"
+// for half an hour afterwards. No propagation timeout outlasts that, and an
+// authoritative server never says it. Three matches the timeout dnswait
+// already uses successfully against this provider.
+const PropagationTimeout = 3 * time.Minute
 
 // ACME endpoints. Staging is the default in development builds because Let's
 // Encrypt allows only five failed validations per hostname per hour, and
@@ -90,7 +99,14 @@ type Config struct {
 	ExtraResolvers []string
 }
 
-// DefaultResolvers are queried during DNS-01 propagation checks.
+// DefaultResolvers are queried during DNS-01 propagation checks when the
+// zone's own nameservers could not be discovered.
+//
+// A fallback, not a preference. Public recursive resolvers cache negative
+// answers, and the challenge record is by definition absent right up until the
+// moment it is created — so the answer they have cached is the wrong one, for
+// as long as the zone's SOA tells them to keep it. Callers should set
+// Config.ExtraResolvers to the authoritative servers instead.
 var DefaultResolvers = []string{"1.1.1.1", "9.9.9.9"}
 
 // Validate reports whether the configuration can produce a working file.
@@ -200,8 +216,9 @@ func (c Config) Generate() (string, error) {
 		fmt.Fprintf(&b, "\t\tdns dynu {env.%s}\n", c.DynuAPIKeyEnv)
 	}
 	fmt.Fprintf(&b, "\t\tresolvers %s\n", strings.Join(resolvers, " "))
-	// Dynu propagation runs to a couple of minutes; the default gives up
-	// sooner and burns a validation attempt against the five-per-hour cap.
+	// Caddy's default is two minutes, which gives up sooner than this provider
+	// sometimes needs and burns a validation attempt against the five-per-hour
+	// cap when it does.
 	fmt.Fprintf(&b, "\t\tpropagation_timeout %s\n", PropagationTimeout)
 	b.WriteString("\t}\n")
 

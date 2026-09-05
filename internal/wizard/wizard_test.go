@@ -135,11 +135,25 @@ func (f *fakeMapper) Add(ctx context.Context, r portmap.Request) (*portmap.Resul
 type fakeDNS struct {
 	calls int
 	err   error
+	// nameservers is what the zone's authoritative servers resolve to, and
+	// nsErr makes that discovery fail.
+	nameservers []string
+	nsErr       error
 }
 
 func (f *fakeDNS) WaitForA(ctx context.Context, hostname string, want netip.Addr, on func(dnswait.Progress)) error {
 	f.calls++
 	return f.err
+}
+
+func (f *fakeDNS) Nameservers(ctx context.Context, hostname string) ([]string, error) {
+	if f.nsErr != nil {
+		return nil, f.nsErr
+	}
+	if f.nameservers != nil {
+		return f.nameservers, nil
+	}
+	return []string{"1.2.3.4:53", "5.6.7.8:53"}, nil
 }
 
 type fakeReach struct{ status reach.Status }

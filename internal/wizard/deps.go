@@ -55,9 +55,12 @@ type PortMapper interface {
 }
 
 // DNSWaiter blocks until an address record is visible on every authoritative
-// nameserver.
+// nameserver, and can name those nameservers.
 type DNSWaiter interface {
 	WaitForA(ctx context.Context, hostname string, want netip.Addr, onProgress func(dnswait.Progress)) error
+	// Nameservers returns the zone's authoritative nameservers as host:port.
+	// The proxy needs them for its own challenge check.
+	Nameservers(ctx context.Context, hostname string) ([]string, error)
 }
 
 // Reacher answers whether the outside world can get in.
@@ -93,9 +96,13 @@ type AvailabilityChecker interface {
 // finished successfully. The user was shown a red line for a setup that was
 // about to work.
 //
+// The margin covers what happens after the record is visible to us: Let's
+// Encrypt then looks it up from its own vantage points, using its own
+// resolvers and its own caches, which we cannot see or hurry.
+//
 // The user-facing copy is derived from this value rather than written beside
 // it, so the number on screen cannot drift from the number enforced.
-const CertificateWait = caddy.PropagationTimeout + 4*time.Minute
+const CertificateWait = caddy.PropagationTimeout + 3*time.Minute
 
 // CertificateWaitText renders that ceiling for the wizard's progress line.
 func CertificateWaitText() string {
