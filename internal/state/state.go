@@ -12,6 +12,7 @@ package state
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -129,6 +130,11 @@ type State struct {
 
 	JellyfinAddress string `json:"jellyfin_address,omitempty"`
 	JellyfinVersion string `json:"jellyfin_version,omitempty"`
+	// JellyfinBase is the server's own base path, if the user set one. Read
+	// from Jellyfin and never written back: it is their setting. Recorded
+	// because the proxy route and the published address both have to match it,
+	// and a resumed run must not have to ask again.
+	JellyfinBase string `json:"jellyfin_base,omitempty"`
 
 	PortMapping *PortMapping `json:"port_mapping,omitempty"`
 
@@ -208,12 +214,30 @@ func (s *State) IsComplete() bool {
 }
 
 // URL returns the address a user connects to, or "" if not yet known.
+//
+// The base path is part of the address whenever Jellyfin has one: the server
+// answers only under it, so an address without it is one nobody can use.
 func (s *State) URL() string {
 	if s.Hostname == "" {
 		return ""
 	}
+	base := s.BasePath()
 	if s.ListenPort == 0 || s.ListenPort == 443 {
-		return "https://" + s.Hostname
+		return "https://" + s.Hostname + base
 	}
-	return fmt.Sprintf("https://%s:%d", s.Hostname, s.ListenPort)
+	return fmt.Sprintf("https://%s:%d%s", s.Hostname, s.ListenPort, base)
+}
+
+// BasePath is Jellyfin's base path with no trailing slash, or "" for a server
+// at the root. Normalised here so that the proxy route, the address shown to
+// the user, and the URL RASA verifies cannot disagree.
+func (s *State) BasePath() string {
+	p := strings.TrimRight(strings.TrimSpace(s.JellyfinBase), "/")
+	if p == "" || p == "/" {
+		return ""
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return p
 }

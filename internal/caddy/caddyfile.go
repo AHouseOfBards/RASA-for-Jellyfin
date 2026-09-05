@@ -143,6 +143,14 @@ func (c Config) Generate() (string, error) {
 	// Global options.
 	b.WriteString("{\n")
 	b.WriteString("\tadmin off\n")
+	// Nothing here needs port 80, and binding it is a way to fail for no
+	// reason. Automatic HTTPS otherwise starts a second server on :80 to
+	// serve HTTP->HTTPS redirects; RASA only ever forwards 443 or 8443 at the
+	// router, so that redirect is unreachable from the internet, while the
+	// local bind still collides with IIS, Apache, or anything else already
+	// holding the port — and Caddy refuses to start when it cannot bind a
+	// listener. Certificates are unaffected: issuance is DNS-01 (SPEC.md §4).
+	b.WriteString("\tauto_https disable_redirects\n")
 	if c.Email != "" {
 		fmt.Fprintf(&b, "\temail %s\n", c.Email)
 	}
@@ -206,7 +214,12 @@ func (c Config) Generate() (string, error) {
 	b.WriteString("\trate_limit {\n")
 	b.WriteString("\t\tzone auth {\n")
 	b.WriteString("\t\t\tmatch {\n")
-	b.WriteString("\t\t\t\tpath /Users/AuthenticateByName\n")
+	// Prefixed by the base path, because the matcher sees the request as it
+	// arrived. A server with a base path publishes its login endpoint at
+	// /jellyfin/Users/AuthenticateByName, and an unprefixed matcher would
+	// silently protect nothing. (Caddy's path matcher is case-insensitive, so
+	// the casing here is cosmetic.)
+	fmt.Fprintf(&b, "\t\t\t\tpath %s/Users/AuthenticateByName\n", c.basePrefix())
 	b.WriteString("\t\t\t}\n")
 	b.WriteString("\t\t\tkey    {remote_host}\n")
 	b.WriteString("\t\t\tevents 10\n")
@@ -228,10 +241,22 @@ func (c Config) Generate() (string, error) {
 	}
 
 	b.WriteString("\n")
-	if c.BaseURL != "" && c.BaseURL != "/" {
-		// Jellyfin serves everything under its base path, so the proxy must
-		// match or every request 404s.
-		fmt.Fprintf(&b, "\thandle_path %s/* {\n", strings.TrimRight(c.BaseURL, "/"))
+	if prefix := c.basePrefix(); prefix != "" {
+		// Someone who types the bare address gets sent to the base path
+		// rather than a blank page. Two handle blocks rather than a bare
+		// redir: handle blocks are mutually exclusive and first-match, so the
+		// root case cannot accidentally swallow requests meant for the proxy.
+		fmt.Fprintf(&b, "\thandle / {\n\t\tredir %s/ 302\n\t}\n\n", prefix)
+
+		// handle, never handle_path.
+		//
+		// A Jellyfin server with a base path serves *under* that path and
+		// expects to receive it: /jellyfin/System/Info/Public is the real
+		// endpoint, and /System/Info/Public is a 404. handle_path implicitly
+		// strips the prefix it matched, so it would forward exactly the path
+		// Jellyfin does not answer — every request 404s, through a proxy that
+		// started cleanly and a setup that reported success.
+		fmt.Fprintf(&b, "\thandle %s/* {\n", prefix)
 		writeReverseProxy(&b, c.UpstreamAddress, "\t\t")
 		b.WriteString("\t}\n")
 	} else {
@@ -240,6 +265,23 @@ func (c Config) Generate() (string, error) {
 
 	b.WriteString("}\n")
 	return b.String(), nil
+}
+
+// basePrefix is Jellyfin's base path with no trailing slash, or empty when the
+// server is at the root.
+//
+// Everything that has to agree with Jellyfin's base path goes through here:
+// the proxy route, the rate-limit matcher, and the URL RASA verifies. They
+// were separately wrong before, which is the argument for one function.
+func (c Config) basePrefix() string {
+	p := strings.TrimRight(strings.TrimSpace(c.BaseURL), "/")
+	if p == "" {
+		return ""
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return p
 }
 
 func writeReverseProxy(b *strings.Builder, upstream, indent string) {

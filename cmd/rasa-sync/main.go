@@ -143,7 +143,7 @@ func (c *checker) run(ctx context.Context) error {
 		CertExpiry: expiry,
 		File:       c.layout.LastSyncFile(),
 		Checks: []health.Check{
-			health.CheckAddress(c.hostname, out.Err),
+			health.CheckAddress(out.Err),
 			proxy,
 		},
 	}

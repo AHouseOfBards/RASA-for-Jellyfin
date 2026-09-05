@@ -34,6 +34,17 @@ func TestGeneratedConfigAgainstRealCaddy(t *testing.T) {
 			t.Skip("set RASA_CADDY_BINARY to a caddy built with packaging/caddy/build.sh")
 		}
 	}
+	// go test runs in the package directory, so a relative path like
+	// ./dist/caddy points at internal/caddy/dist and finds nothing. That used
+	// to surface as "Caddy rejected the generated configuration" with no
+	// reason given, which is a long way from the truth.
+	if _, err := os.Stat(binary); err != nil {
+		abs, _ := filepath.Abs(binary)
+		t.Fatalf("RASA_CADDY_BINARY=%s does not exist (looked in %s).\n"+
+			"Tests run in the package directory, so this has to be an absolute path:\n"+
+			"  RASA_CADDY_BINARY=$(pwd)/dist/caddy%s go test ./internal/caddy/ -run RealCaddy -v",
+			binary, abs, strings.TrimPrefix(BinaryName(), "caddy"))
+	}
 
 	dir := t.TempDir()
 	in := &Installer{

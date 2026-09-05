@@ -171,7 +171,21 @@ func (in *Installer) Validate(ctx context.Context, env map[string]string) error 
 		return nil
 	}
 
+	// A binary that could not be run at all is not a verdict on the file.
+	// Without this the message reads "the proxy configuration was rejected:"
+	// followed by nothing, which sends whoever reads it to inspect a
+	// Caddyfile that was never looked at.
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) {
+		return fmt.Errorf("could not run the bundled proxy at %s: %w", in.BinaryPath, err)
+	}
+
 	detail := errorLine(string(out))
+	if detail == "" {
+		// Caddy redirects its own logger into the configured log file, so a
+		// failure can leave nothing on stdout to quote.
+		return fmt.Errorf("the bundled proxy rejected the configuration and said nothing; %s may explain why", in.CaddyfilePath)
+	}
 	if directive, module, ok := missingModule(detail); ok {
 		// This is the packaging failure the package doc warns about, and it is
 		// worth naming precisely: Caddy parses every other line in the file and

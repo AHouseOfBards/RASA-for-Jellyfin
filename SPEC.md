@@ -98,6 +98,8 @@ HTTP-01 requires port 80 reachable from the internet *before a certificate can b
 
 It also unlocks the fallback that prevents dead ends: with issuance independent of port 80, the proxy can listen on **8443** when 443 is unavailable. Jellyfin clients accept a port in the URL.
 
+> ⚠️ **Say so in the generated config, or Caddy binds port 80 anyway.** Automatic HTTPS starts a second server on :80 for HTTP-to-HTTPS redirects. RASA only ever forwards 443 or 8443 at the router, so that redirect is unreachable from the internet — while the local bind still collides with IIS, Apache, or anything else holding the port, and Caddy refuses to start when it cannot bind a listener. `auto_https disable_redirects` turns off the redirect and leaves certificate automation alone.
+
 ---
 
 ## 5. The mode router
@@ -483,10 +485,16 @@ Authenticate via `POST /Users/AuthenticateByName` (or accept an API key), then r
 |---|---|---|
 | `KnownProxies` | `127.0.0.1`, plus `::1` | Without it Jellyfin ignores `X-Forwarded-*` and logs every user with the proxy's IP. **Include `::1`** — if the proxy dials over IPv6 loopback and only `127.0.0.1` is listed, this silently fails |
 | `EnableRemoteAccess` | `true` | Off by default in some installs |
-| `PublishedServerUriBySubnet` | `all=https://<hostname>` | Otherwise Jellyfin hands clients internal URLs and off-network playback breaks in ways that look like a proxy bug |
+| `PublishedServerUriBySubnet` | `all=https://<hostname><base path>` | Otherwise Jellyfin hands clients internal URLs and off-network playback breaks in ways that look like a proxy bug |
 | `EnableUPnP` | `false` | Stops Jellyfin's own port mapping fighting RASA's |
 | Jellyfin-side HTTPS | leave disabled | TLS terminates at the proxy; both causes a redirect loop |
-| `BaseUrl` | read, do not change | If set, the generated proxy config must match |
+| `BaseUrl` | read, do not change | It is the user's setting, and the server answers **only** under it |
+
+> ⚠️ **A base path is load-bearing in four places, and getting any one wrong looks like a router fault.** Jellyfin with `BaseUrl=/jellyfin` serves `/jellyfin/System/Info/Public` and 404s `/System/Info/Public`, so all four of these have to carry it: the proxy route, the published server URI above, the address shown to the user and encoded in the QR, and the URL the reachability check fetches.
+>
+> The proxy route uses Caddy's `handle`, never `handle_path`. `handle_path` implicitly strips the prefix it matched, which forwards exactly the path Jellyfin does not answer — through a proxy that starts cleanly and a setup that reports success. The login rate-limit matcher needs the prefix too, or it silently protects nothing.
+>
+> Read it before the proxy configuration is written, not during the Jellyfin step, which runs later.
 
 > Jellyfin serves its own OpenAPI document from the local instance. Fetch it during Phase 2 and validate keys against the *actual* running version.
 
@@ -741,6 +749,7 @@ Single static binaries per platform keep the installer simple; the UPnP, DNS, an
 - **16 shifts rather than disappears.** RASA needs no updater, but the Caddy binary it installs is a public-facing TLS listener that will eventually need patching. Decide deliberately: document a manual update path, or have a RASA re-run detect and offer to replace it. The state file from 15 already provides the hook.
 - **17 has no backend to report to.** The user-exportable bundle needs no infrastructure and should be built. Automatic crash reporting would need a service that decisions 1 and 2 rule out.
 - **11 resolves better than expected.** Because DNS-01 removes any need for port 80, a conflict on 443 is not a real obstacle — fall back to 8443 silently. Reserve the interrupting warning for an existing reverse proxy.
+- **Falling back to 8443 means asking the router for 8443.** The switch happens because something else already answers on 443, which means the forward for it points elsewhere. Moving only the listener changes which port nothing arrives on, and the second check then blames the user's port forwarding for a problem RASA created.
 - **12 removes work.** A 10.11.5 floor means one configuration schema rather than compatibility shims.
 
 ### Still to verify

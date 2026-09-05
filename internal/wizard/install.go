@@ -14,6 +14,7 @@ import (
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/dynu"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/jellyfin"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/mode"
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/portmap"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/probe"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/qr"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/rasaerr"
@@ -203,8 +204,17 @@ func (w *Wizard) waitForDNS(ctx context.Context) error {
 func (w *Wizard) installProxy(ctx context.Context) error {
 	w.step(SetupProxy, StepRunning, "")
 
+	// Jellyfin's base path has to be known before the file is written, and
+	// this step runs before the one that configures Jellyfin, so it is read
+	// here rather than inherited. A server with a base path answers only under
+	// it: a proxy that does not match forwards paths Jellyfin 404s, and every
+	// later step — including the reachability check — then reports a working
+	// setup as a broken router.
+	w.readJellyfinBase(ctx)
+
 	w.mu.Lock()
 	hostname, port, res, key := w.st.Hostname, w.st.ListenPort, w.probed, w.dkey
+	base := w.st.BasePath()
 	w.mu.Unlock()
 
 	proxy, err := w.proxyInstaller()
@@ -216,6 +226,7 @@ func (w *Wizard) installProxy(ctx context.Context) error {
 	cfg := caddy.Config{
 		Hostname:        hostname,
 		ListenPort:      port,
+		BaseURL:         base,
 		UpstreamAddress: res.Jellyfin.Address,
 		DynuAPIKeyEnv:   TokenEnvVar,
 		// A Dynu DDNS hostname is its own zone: the record sits at the apex,
@@ -240,6 +251,43 @@ func (w *Wizard) installProxy(ctx context.Context) error {
 	w.step(SetupProxy, StepDone, "The secure connection is running")
 	w.save()
 	return nil
+}
+
+// readJellyfinBase records the server's own base path.
+//
+// Best effort, and deliberately so. A server that will not answer this
+// question is a server RASA is about to fail on for a better reason, and the
+// overwhelmingly common answer is "no base path" — which is also what a failed
+// read assumes. Guessing wrong in that direction produces today's behaviour;
+// refusing to continue would produce a setup that stops for a value almost
+// nobody has set.
+func (w *Wizard) readJellyfinBase(ctx context.Context) {
+	w.mu.Lock()
+	jf := w.jf
+	w.mu.Unlock()
+	if jf == nil {
+		return
+	}
+
+	cfg, err := jf.NetworkConfig(ctx)
+	if err != nil {
+		w.log.Warn("could not read Jellyfin's base path", slog.Any("err", err))
+		return
+	}
+	base, _ := cfg[jellyfin.KeyBaseURL].(string)
+
+	w.mu.Lock()
+	w.st.JellyfinBase = base
+	normalised := w.st.BasePath()
+	w.mu.Unlock()
+
+	if normalised != "" {
+		// Worth a line of its own: it changes the address the user has to
+		// type, and it is the setting most likely to make a support thread
+		// confusing later.
+		w.log.Info("Jellyfin serves under a base path", slog.String("base", normalised))
+	}
+	w.save()
 }
 
 // proxyInstaller builds the real installer unless a test supplied one.
@@ -343,6 +391,7 @@ func (w *Wizard) configureJellyfin(ctx context.Context) error {
 
 	w.mu.Lock()
 	jf, res, hostname, port := w.jf, w.probed, w.st.Hostname, w.st.ListenPort
+	base := w.st.BasePath()
 	w.mu.Unlock()
 
 	if jf == nil {
@@ -351,7 +400,7 @@ func (w *Wizard) configureJellyfin(ctx context.Context) error {
 	}
 
 	settings := jellyfin.Settings{
-		PublicURL:    publicURL(hostname, port),
+		PublicURL:    publicURL(hostname, port, base),
 		ProxySources: []string{res.Jellyfin.ProxySourceAddress},
 	}
 	out, err := jf.Apply(ctx, settings)
@@ -449,17 +498,21 @@ func (w *Wizard) verify(ctx context.Context) error {
 
 	w.mu.Lock()
 	res, hostname, port := w.probed, w.st.Hostname, w.st.ListenPort
+	base := w.st.BasePath()
 	w.mu.Unlock()
 
 	addr := res.Internet.PublicV4
 	if !addr.IsValid() {
 		addr = res.Internet.PublicV6
 	}
-	url := publicURL(hostname, port) + "/System/Info/Public"
+	// The base path is part of the endpoint. Without it this asks a server
+	// with a base path for a URL it deliberately 404s, scores the answer as
+	// "something else replied", and then blames the router.
+	url := publicURL(hostname, port, base) + "/System/Info/Public"
 	out := w.opts.NewReach(addr).CheckURL(ctx, url, "\"Version\"")
 
 	w.update(func(m *Model) {
-		m.Result.URL = publicURL(hostname, port)
+		m.Result.URL = publicURL(hostname, port, base)
 		m.Result.Reachable = out.Status.String()
 		m.Result.ReachMessage = out.UserMessage()
 	})
@@ -534,7 +587,16 @@ func (w *Wizard) switchToFallbackPort(ctx context.Context) error {
 
 	w.step(SetupVerify, StepRunning, "Port 443 didn't work, trying 8443")
 
-	// Only the steps that carry a port. The address, the DNS record and the
+	// The router first, because it is the reason this is happening. Something
+	// on the network already answers on 443, so the forward for it points
+	// somewhere else — and moving the listener without asking the router to
+	// send 8443 here changes which port nothing arrives on. Skipping this made
+	// the automatic repair structurally incapable of working: it would move to
+	// 8443, fail the second check for a new reason, and blame the user's port
+	// forwarding.
+	w.mapFallbackPort(ctx)
+
+	// Then the steps that carry a port. The address, the DNS record and the
 	// certificate are all unchanged.
 	if err := w.installProxy(ctx); err != nil {
 		return err
@@ -548,6 +610,46 @@ func (w *Wizard) switchToFallbackPort(ctx context.Context) error {
 			"If you set up port forwarding by hand, the rule needs to be for 8443, not 443.")
 
 	return w.verify(ctx)
+}
+
+// mapFallbackPort asks the router to forward the fallback port here.
+//
+// Best effort. A router that will not do it automatically leaves the user with
+// the manual instructions and the warning that follows, which is exactly where
+// they were before — so a failure here must not stop setup finishing. What it
+// must not do is be skipped, which was the bug.
+func (w *Wizard) mapFallbackPort(ctx context.Context) {
+	w.mu.Lock()
+	res := w.probed
+	w.mu.Unlock()
+
+	if res.Router.ControlURL == "" || !res.Host.LANAddress.IsValid() {
+		return
+	}
+	log := w.log.WithPhase("portmap")
+
+	out, err := w.opts.NewMapper(res.Router.ControlURL, res.Router.ServiceType).Add(ctx, portmap.Request{
+		ExternalPort:   mode.PortFallback,
+		InternalPort:   mode.PortFallback,
+		InternalClient: res.Host.LANAddress,
+		Protocol:       portmap.TCP,
+	})
+	if err != nil {
+		log.Debug("could not forward the fallback port", slog.Any("err", err))
+		return
+	}
+
+	w.mu.Lock()
+	w.st.PortMapping = &state.PortMapping{
+		ExternalPort: out.Mapping.ExternalPort,
+		InternalPort: out.Mapping.InternalPort,
+		Method:       "upnp",
+		Permanent:    out.Mapping.Permanent(),
+		LeaseSeconds: out.Mapping.LeaseSeconds,
+	}
+	w.mu.Unlock()
+	w.save()
+	log.Info("forwarded the fallback port", slog.Int("port", out.Mapping.ExternalPort))
 }
 
 func (w *Wizard) addWarning(code, text string) {

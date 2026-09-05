@@ -101,7 +101,7 @@ func TestWriteProducesAReadableFile(t *testing.T) {
 // ---- checks -------------------------------------------------------------
 
 func TestAFailedSyncIsReportedWithItsConsequence(t *testing.T) {
-	c := CheckAddress("mymedia.freeddns.org", errors.New("looking up hostname: 401"))
+	c := CheckAddress(errors.New("looking up hostname: 401"))
 	if c.OK {
 		t.Fatal("a failed sync must not report OK")
 	}

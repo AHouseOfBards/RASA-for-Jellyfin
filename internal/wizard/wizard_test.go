@@ -71,6 +71,7 @@ func (f *fakeDynu) UpdateAddresses(ctx context.Context, id int64, name string, v
 
 type fakeJellyfin struct {
 	admin      bool
+	baseURL    string
 	authErr    error
 	applied    []jellyfin.Settings
 	applyRes   *jellyfin.Result
@@ -84,7 +85,11 @@ func (f *fakeJellyfin) PublicInfo(ctx context.Context) (*jellyfin.PublicInfo, er
 	return &jellyfin.PublicInfo{ServerName: "Living Room", Version: "10.11.7"}, nil
 }
 func (f *fakeJellyfin) NetworkConfig(ctx context.Context) (jellyfin.Config, error) {
-	return jellyfin.Config{}, f.configErr
+	cfg := jellyfin.Config{}
+	if f.baseURL != "" {
+		cfg[jellyfin.KeyBaseURL] = f.baseURL
+	}
+	return cfg, f.configErr
 }
 func (f *fakeJellyfin) AuthenticateByName(ctx context.Context, u, p string) (*jellyfin.AuthResult, error) {
 	if f.authErr != nil {

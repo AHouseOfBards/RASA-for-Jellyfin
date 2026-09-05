@@ -11,7 +11,12 @@ CADDY_VERSION="${CADDY_VERSION:-v2.10.0}"
 DYNU_VERSION="${DYNU_VERSION:-v1.0.0}"
 RATELIMIT_VERSION="${RATELIMIT_VERSION:-v0.1.0}"
 
-OUT="${OUT:-./dist/caddy}"
+# The extension matters on Windows and is easy to leave off. xcaddy runs the
+# binary it just built to print its version, so an output path without .exe
+# makes a completely successful build report failure — and the retry loop below
+# then rebuilds it twice more before giving up. Releases set OUT explicitly per
+# target; this default is for running the script by hand.
+OUT="${OUT:-./dist/caddy$(go env GOEXE)}"
 mkdir -p "$(dirname "$OUT")"
 
 command -v xcaddy >/dev/null 2>&1 || {

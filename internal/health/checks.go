@@ -24,7 +24,7 @@ const RenewalWindow = 14 * 24 * time.Hour
 // CheckAddress turns the address syncer's result into a user-facing check.
 //
 // syncErr is whatever the sync run returned; nil means it worked.
-func CheckAddress(hostname string, syncErr error) Check {
+func CheckAddress(syncErr error) Check {
 	c := Check{Name: "Your address points at this connection"}
 	if syncErr == nil {
 		c.OK = true

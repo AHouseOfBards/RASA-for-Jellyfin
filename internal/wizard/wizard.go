@@ -824,11 +824,15 @@ func (w *Wizard) ClaimName(ctx context.Context, label, parent string) error {
 	w.advance(state.DomainClaimed)
 
 	w.log.WithPhase("domain").OK("Your web address is reserved.")
+	// Empty until installProxy reads it from Jellyfin, which is fine: the
+	// address shown here is a preview, and verify rewrites it once the real
+	// one is known.
+	base := w.currentBasePath()
 	w.update(func(m *Model) {
 		m.Name.Hostname = hostname
 		m.Name.Availability = domains.Mine.String()
 		m.Name.Advice = ""
-		m.Result.URL = publicURL(hostname, m.ListenPort)
+		m.Result.URL = publicURL(hostname, m.ListenPort, base)
 		m.Screen = ScreenPort
 	})
 
@@ -875,17 +879,30 @@ func (w *Wizard) quotaExhausted(ctx context.Context, dyn DynuAPI, cause error) e
 	return rasaerr.DynuQuotaExhausted(names, cause)
 }
 
-// publicURL renders the address a browser should be pointed at, including the
-// port when it is not the default — the 8443 fallback is invisible in the
-// hostname and users will otherwise type the address and get nothing.
-func publicURL(hostname string, port int) string {
+// currentBasePath returns Jellyfin's normalised base path as currently known.
+func (w *Wizard) currentBasePath() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.st.BasePath()
+}
+
+// publicURL renders the address a browser should be pointed at.
+//
+// It carries the port when it is not the default — the 8443 fallback is
+// invisible in the hostname and users will otherwise type the address and get
+// nothing — and Jellyfin's base path when it has one, for the same reason: a
+// server with a base path answers only under it, so the address without it is
+// one nobody can use.
+//
+// base must already be normalised; use state.BasePath.
+func publicURL(hostname string, port int, base string) string {
 	if hostname == "" {
 		return ""
 	}
 	if port == 0 || port == 443 {
-		return "https://" + hostname
+		return "https://" + hostname + base
 	}
-	return fmt.Sprintf("https://%s:%d", hostname, port)
+	return fmt.Sprintf("https://%s:%d%s", hostname, port, base)
 }
 
 // ---------------------------------------------------------------------------

@@ -145,22 +145,40 @@ func TestLogBlockOmittedWhenNoPath(t *testing.T) {
 	}
 }
 
-func TestBaseURLProducesHandlePath(t *testing.T) {
-	// Jellyfin serves everything under its base path; a proxy that ignores it
-	// 404s every request.
+func TestBaseURLIsRoutedWithoutStrippingIt(t *testing.T) {
+	// Jellyfin serves everything under its base path and expects to receive
+	// it: /jellyfin/System/Info/Public is the endpoint, /System/Info/Public is
+	// a 404. handle_path strips the prefix it matched, so it forwards exactly
+	// the path Jellyfin does not answer — through a proxy that started
+	// cleanly and a setup that reported success.
 	c := good()
 	c.BaseURL = "/jellyfin"
 	out := generate(t, c)
-	if !strings.Contains(out, "handle_path /jellyfin/*") {
+	if strings.Contains(out, "handle_path") {
+		t.Fatalf("handle_path strips the base path Jellyfin needs:\n%s", out)
+	}
+	if !strings.Contains(out, "handle /jellyfin/* {") {
 		t.Fatalf("base url not honoured:\n%s", out)
+	}
+	if strings.Contains(out, "strip_prefix") {
+		t.Fatalf("the base path is being stripped some other way:\n%s", out)
 	}
 }
 
 func TestBaseURLTrailingSlashIsNormalised(t *testing.T) {
 	c := good()
 	c.BaseURL = "/jellyfin/"
-	if out := generate(t, c); !strings.Contains(out, "handle_path /jellyfin/*") {
+	if out := generate(t, c); !strings.Contains(out, "handle /jellyfin/* {") {
 		t.Fatalf("trailing slash not normalised:\n%s", out)
+	}
+}
+
+// Jellyfin's own settings page accepts the value either way.
+func TestABaseURLWithoutALeadingSlashStillWorks(t *testing.T) {
+	c := good()
+	c.BaseURL = "jellyfin"
+	if out := generate(t, c); !strings.Contains(out, "handle /jellyfin/* {") {
+		t.Fatalf("missing leading slash not normalised:\n%s", out)
 	}
 }
 
@@ -168,8 +186,41 @@ func TestRootBaseURLIsTreatedAsNone(t *testing.T) {
 	c := good()
 	c.BaseURL = "/"
 	out := generate(t, c)
-	if strings.Contains(out, "handle_path") {
-		t.Fatalf("a root base path should not produce handle_path:\n%s", out)
+	if strings.Contains(out, "handle /") || strings.Contains(out, "handle_path") {
+		t.Fatalf("a root base path should not produce a handle block:\n%s", out)
+	}
+}
+
+// The rate limiter sees the request as it arrived, so an unprefixed matcher on
+// a server with a base path protects nothing at all — while still appearing in
+// the generated file, which is the worst kind of security control.
+func TestTheLoginRateLimitFollowsTheBasePath(t *testing.T) {
+	c := good()
+	c.BaseURL = "/jellyfin"
+	if out := generate(t, c); !strings.Contains(out, "path /jellyfin/Users/AuthenticateByName") {
+		t.Fatalf("the rate limiter does not cover the real login path:\n%s", out)
+	}
+}
+
+func TestTheLoginRateLimitCoversTheRootCase(t *testing.T) {
+	if out := generate(t, good()); !strings.Contains(out, "path /Users/AuthenticateByName") {
+		t.Fatalf("the rate limiter does not cover the login path:\n%s", out)
+	}
+}
+
+// RASA forwards 443 or 8443 at the router and never 80, so Caddy's automatic
+// HTTP-to-HTTPS redirect is unreachable from the internet — but the :80 bind
+// it needs still collides with anything already holding the port, and Caddy
+// refuses to start when it cannot bind a listener.
+func TestPortEightyIsNeverBound(t *testing.T) {
+	out := generate(t, good())
+	if !strings.Contains(out, "auto_https disable_redirects") {
+		t.Fatalf("nothing stops Caddy opening a redirect server on port 80:\n%s", out)
+	}
+	// disable_certs would be the catastrophic typo: it turns off the thing the
+	// whole product exists to do.
+	if strings.Contains(out, "disable_certs") {
+		t.Fatalf("certificate automation was disabled:\n%s", out)
 	}
 }
 
@@ -339,5 +390,24 @@ func TestPropagationTimeoutIsEmittedFromTheConstant(t *testing.T) {
 	want := "propagation_timeout " + PropagationTimeout.String()
 	if !strings.Contains(out, want) {
 		t.Errorf("generated file does not carry %q", want)
+	}
+}
+
+// A user who types the bare address should land on the server, not a blank
+// page. Two handle blocks rather than a bare redir, because handle blocks are
+// mutually exclusive and first-match.
+func TestTheBareAddressRedirectsToTheBasePath(t *testing.T) {
+	c := good()
+	c.BaseURL = "/jellyfin"
+	out := generate(t, c)
+	if !strings.Contains(out, "handle / {") || !strings.Contains(out, "redir /jellyfin/ 302") {
+		t.Fatalf("the bare address does not reach the server:\n%s", out)
+	}
+}
+
+func TestNoRedirectWhenTheServerIsAtTheRoot(t *testing.T) {
+	// "redir", not "redir" anywhere — auto_https disable_redirects contains it.
+	if out := generate(t, good()); strings.Contains(out, "\tredir ") {
+		t.Fatalf("a server at the root needs no redirect:\n%s", out)
 	}
 }
