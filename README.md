@@ -63,6 +63,9 @@ tested yet:
 * Linux has never been tested on real hardware.
 * If your Jellyfin uses a custom base path, that support is new in this version and has
   been tested against a real proxy but not against a real Jellyfin.
+* Working out which router you have, by reading its settings page, is new in this version
+  and has never yet recognised a real one. If it cannot tell, you can pick yours from a
+  list.
 
 If you try it, please [open an issue](https://github.com/AHouseOfBards/RASA-for-Jellyfin/issues)
 and say what happened, whether it worked or not. That is the most useful thing you can do
