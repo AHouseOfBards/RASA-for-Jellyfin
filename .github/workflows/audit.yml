@@ -64,3 +64,13 @@ jobs:
         env:
           RASA_CADDY_BINARY: ${{ github.workspace }}/dist/caddy
         run: go test ./internal/caddy/ -run RealCaddy -v
+
+      # And then actually serve it. Accepting a file is not the same as routing
+      # a request to the right place: handle_path parses, validates, and strips
+      # the prefix Jellyfin needs, so only a request that arrives somewhere can
+      # tell the difference. Same for a redirect whose destination is silently
+      # read as a matcher.
+      - name: Serve a generated configuration and make real requests through it
+        env:
+          RASA_CADDY_BINARY: ${{ github.workspace }}/dist/caddy
+        run: go test ./internal/caddy/ -run EndToEnd -v

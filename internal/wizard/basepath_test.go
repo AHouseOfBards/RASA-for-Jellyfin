@@ -172,3 +172,55 @@ func (m *recordingMapper) Add(ctx context.Context, r portmap.Request) (*portmap.
 		VerifiedByReadback: true,
 	}, nil
 }
+
+// The name screen shows the address the user is about to commit to, and the
+// confirmation step asks them to approve it. Reading the base path only at the
+// proxy step meant both showed an address that would not work.
+func TestTheAddressIsRightBeforeTheNameIsClaimed(t *testing.T) {
+	h := newHarness(t, nil)
+	h.jf.baseURL = "/jellyfin"
+
+	ctx := context.Background()
+	if err := h.w.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.w.SignIn(ctx, "admin", "hunter2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.w.SetDynuKey(ctx, testKey); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.w.ClaimName(ctx, "mymedia", "freeddns.org"); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := h.w.Model().Result.URL; got != "https://mymedia.freeddns.org/jellyfin" {
+		t.Errorf("URL on the name screen = %q, want the base path included", got)
+	}
+}
+
+// The API-key path validates the key by reading the network configuration, so
+// the base path is already in hand — asking for it again would be a second
+// round trip for a value it is holding.
+func TestTheAPIKeyPathLearnsTheBasePathToo(t *testing.T) {
+	h := newHarness(t, nil)
+	h.jf.baseURL = "/jellyfin"
+
+	ctx := context.Background()
+	if err := h.w.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.w.UseAPIKey(ctx, "a-jellyfin-api-key"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.w.SetDynuKey(ctx, testKey); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.w.ClaimName(ctx, "mymedia", "freeddns.org"); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := h.w.Model().Result.URL; got != "https://mymedia.freeddns.org/jellyfin" {
+		t.Errorf("URL = %q, want the base path included", got)
+	}
+}

@@ -528,6 +528,11 @@ func (w *Wizard) SignIn(ctx context.Context, username, password string) error {
 		})
 	}
 
+	// Read now rather than at the proxy step, so the address previewed on the
+	// name screen is the one the user will actually type. A server with a base
+	// path answers only under it.
+	w.readJellyfinBase(ctx)
+
 	w.log.WithPhase("jellyfin").OK("Signed in to Jellyfin.")
 	w.update(func(m *Model) {
 		m.Jellyfin.SignedIn = true
@@ -569,13 +574,16 @@ func (w *Wizard) UseAPIKey(ctx context.Context, key string) error {
 	// use it. PublicInfo would pass with any key at all because it needs
 	// none; reading the network configuration is the same access the setup
 	// later writes with, so a key that passes here will not fail there.
-	if _, err := jf.NetworkConfig(ctx); err != nil {
+	cfg, err := jf.NetworkConfig(ctx)
+	if err != nil {
 		return w.fail("jellyfin", rasaerr.JellyfinAuthRejected("http://"+addr, err))
 	}
 
 	w.mu.Lock()
 	w.jf = jf
 	w.mu.Unlock()
+	// Already in hand from the validation call above.
+	w.storeJellyfinBase(cfg)
 	w.log.WithPhase("jellyfin").OK("Jellyfin API key accepted.")
 	w.update(func(m *Model) {
 		m.Jellyfin.SignedIn = true

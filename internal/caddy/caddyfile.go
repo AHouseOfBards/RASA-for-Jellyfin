@@ -246,7 +246,13 @@ func (c Config) Generate() (string, error) {
 		// rather than a blank page. Two handle blocks rather than a bare
 		// redir: handle blocks are mutually exclusive and first-match, so the
 		// root case cannot accidentally swallow requests meant for the proxy.
-		fmt.Fprintf(&b, "\thandle / {\n\t\tredir %s/ 302\n\t}\n\n", prefix)
+		//
+		// The `*` is load-bearing. redir takes an optional leading matcher,
+		// and a destination that begins with "/" is read as one — so
+		// `redir /jellyfin/ 302` quietly becomes "match /jellyfin/, redirect
+		// to the literal string 302". It parses, it validates, and it never
+		// fires. Found by serving the config and asking it for the page.
+		fmt.Fprintf(&b, "\thandle / {\n\t\tredir * %s/ 302\n\t}\n\n", prefix)
 
 		// handle, never handle_path.
 		//

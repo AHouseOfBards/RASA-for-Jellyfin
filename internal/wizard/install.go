@@ -274,18 +274,34 @@ func (w *Wizard) readJellyfinBase(ctx context.Context) {
 		w.log.Warn("could not read Jellyfin's base path", slog.Any("err", err))
 		return
 	}
+	w.storeJellyfinBase(cfg)
+}
+
+// storeJellyfinBase records the base path from a configuration already read.
+//
+// Split from the fetch because sign-in has the answer in its hand: the API-key
+// path reads the network configuration to validate the key, and asking again
+// would be a second round trip for a value it is already holding.
+func (w *Wizard) storeJellyfinBase(cfg jellyfin.Config) {
 	base, _ := cfg[jellyfin.KeyBaseURL].(string)
 
 	w.mu.Lock()
+	changed := w.st.JellyfinBase != base
 	w.st.JellyfinBase = base
 	normalised := w.st.BasePath()
+	url := w.st.URL()
 	w.mu.Unlock()
 
-	if normalised != "" {
+	if changed && normalised != "" {
 		// Worth a line of its own: it changes the address the user has to
 		// type, and it is the setting most likely to make a support thread
 		// confusing later.
 		w.log.Info("Jellyfin serves under a base path", slog.String("base", normalised))
+	}
+	// The address on screen is built from this, so it has to be refreshed here
+	// rather than waiting for the next step that happens to rebuild it.
+	if url != "" {
+		w.update(func(m *Model) { m.Result.URL = url })
 	}
 	w.save()
 }

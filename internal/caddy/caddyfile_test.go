@@ -400,7 +400,7 @@ func TestTheBareAddressRedirectsToTheBasePath(t *testing.T) {
 	c := good()
 	c.BaseURL = "/jellyfin"
 	out := generate(t, c)
-	if !strings.Contains(out, "handle / {") || !strings.Contains(out, "redir /jellyfin/ 302") {
+	if !strings.Contains(out, "handle / {") || !strings.Contains(out, "redir * /jellyfin/ 302") {
 		t.Fatalf("the bare address does not reach the server:\n%s", out)
 	}
 }
