@@ -245,10 +245,16 @@ func DynuQuotaExhausted(existing []string, cause error) *Error {
 		Code:    CodeDynuQuotaExhausted,
 		Message: "Your Dynu account is full.",
 		Why:     why,
+		// Ordered by what the user is most likely to do next: leave for Dynu,
+		// come back, try the same name again. "Use a different name" is
+		// deliberately not offered — every other new name fails identically,
+		// and a button that walks someone into the same wall is worse than no
+		// button. Reusing a name they already own is the other real option,
+		// and it is done by typing it in the field that is still on screen.
 		Actions: []Action{
-			{ID: "rename", Label: "Use a different name", Kind: ActionAlternate},
 			{ID: "open_dynu", Label: "Open Dynu", Kind: ActionExternal},
-			{ID: "retry", Label: "Try again", Kind: ActionRetry},
+			{ID: "retry", Label: "I've made room, try again", Kind: ActionRetry},
+			{ID: "rename", Label: "Use one I already have", Kind: ActionAlternate},
 		},
 		Detail:  fmt.Sprintf("Dynu refused the hostname for quota, account holds %d name(s)", len(existing)),
 		wrapped: cause,

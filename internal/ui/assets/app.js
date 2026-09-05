@@ -289,16 +289,32 @@ function renderProblem(err) {
  * by id first — sending someone who asked to open Dynu back to the name box
  * instead is worse than not offering the button. */
 function handleAction(action) {
-  if (action.id === "open_dynu") {
-    window.open(DYNU_DDNS, "_blank", "noopener");
-    return;
+  // Actions that mean the same thing wherever they appear. Matched first,
+  // because falling through to the screen would send someone who asked to
+  // open Dynu back to the name box instead.
+  switch (action.id) {
+    case "open_dynu":
+      window.open(DYNU_DDNS, "_blank", "noopener");
+      return;
+    case "rename":
+    case "suggestions":
+    case "pick_domain":
+      // Back to the field with the old name selected, so typing replaces it.
+      // Without the focus this button does nothing a user can see: the screen
+      // it switches to is the one they are already looking at.
+      show("name");
+      editName();
+      return;
   }
   switch (model && model.screen) {
     case "blocked":
       post("/api/start");
       break;
     case "name":
-      show("name");
+      // The same name again. Retrying here follows the user going off to make
+      // room at Dynu, and asking them to retype what is still in the field
+      // would be strange.
+      submitName();
       break;
     case "port":
       post("/api/port/open");
@@ -306,6 +322,28 @@ function handleAction(action) {
     default:
       post("/api/install");
   }
+}
+
+/* Puts the cursor in the name field with the current value selected. */
+function editName() {
+  const label = document.getElementById("name-label");
+  label.focus();
+  label.select();
+}
+
+/* Sends whatever is in the name field. The confirmation step is skipped
+ * deliberately: it exists so the first, irreversible claim is not one click,
+ * and by the time this runs the user has already confirmed that name once. */
+function submitName() {
+  const label = document.getElementById("name-label").value.trim();
+  if (!label) {
+    editName();
+    return;
+  }
+  post("/api/name", {
+    label: label,
+    parent: document.getElementById("name-parent").value,
+  });
 }
 
 function closeConfirm() {
@@ -746,16 +784,12 @@ function wire() {
 
   document.getElementById("confirm-back").addEventListener("click", () => {
     closeConfirm();
-    document.getElementById("name-label").focus();
-    document.getElementById("name-label").select();
+    editName();
   });
 
   document.getElementById("confirm-create").addEventListener("click", () => {
     closeConfirm();
-    post("/api/name", {
-      label: document.getElementById("name-label").value.trim(),
-      parent: document.getElementById("name-parent").value,
-    });
+    submitName();
   });
 
   for (const b of document.querySelectorAll("[data-toggle]")) {
