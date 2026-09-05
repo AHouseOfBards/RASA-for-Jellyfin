@@ -626,6 +626,13 @@ func (w *Wizard) switchToFallbackPort(ctx context.Context) error {
 
 	w.step(SetupVerify, StepRunning, "Port 443 didn't work, trying 8443")
 
+	// Same reason as the mapping-conflict path: the address ends up carrying a
+	// port, and the recovery file is the only thing that will still be around
+	// to say why.
+	w.addWarning(mode.WarnNonStandardPort, fmt.Sprintf(
+		"Your address needs :%d on the end. Nothing reached your server on port %d, so setup moved to the alternative port.",
+		mode.PortFallback, mode.PortPreferred))
+
 	// The router first, because it is the reason this is happening. Something
 	// on the network already answers on 443, so the forward for it points
 	// somewhere else — and moving the listener without asking the router to

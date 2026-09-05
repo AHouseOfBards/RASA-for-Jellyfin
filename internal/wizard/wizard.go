@@ -1079,6 +1079,14 @@ func (w *Wizard) openPort(ctx context.Context) error {
 				w.decision.ListenPort = mode.PortFallback
 				w.mu.Unlock()
 				log.OK("Used the alternative port, because your first choice was already taken.")
+				// The address is about to grow a ":8443" that nothing else
+				// would explain. The existing warning for a non-standard port
+				// is raised only when 443 is busy on this computer, and says
+				// so — which is the wrong reason here, and a wrong reason in
+				// the recovery file outlives RASA.
+				w.addWarning(mode.WarnNonStandardPort, fmt.Sprintf(
+					"Your address needs :%d on the end. Port %d on your router is already forwarded to a different device on your network, so setup used the alternative port.",
+					mode.PortFallback, mode.PortPreferred))
 			}
 		}
 

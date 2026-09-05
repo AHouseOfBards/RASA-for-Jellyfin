@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/mode"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/portmap"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/probe"
 )
@@ -279,4 +280,70 @@ func TestTheScreenSaysWhyUPnPIsUnavailable(t *testing.T) {
 	if m.Port.UPnPProblem != "" {
 		t.Errorf("a problem was reported for a router that offers port opening: %q", m.Port.UPnPProblem)
 	}
+}
+
+// The address grows a ":8443" that nothing else on the screen explains, and
+// the recovery file outlives RASA -- so the reason has to be recorded, and it
+// has to be the right reason. mode.Choose raises this warning only when 443 is
+// busy on this computer and says so, which is wrong for a port the router is
+// already forwarding to a different device.
+func TestMovingToTheFallbackPortSaysWhy(t *testing.T) {
+	h := newHarness(t, func(o *Options) {
+		// 718 is ConflictInMappingEntry: the router already forwards 443
+		// somewhere else, which the local port probe cannot see.
+		o.NewMapper = func(string, string) PortMapper {
+			return &conflictThenOKMapper{}
+		}
+	})
+
+	ctx := context.Background()
+	for _, step := range []func() error{
+		func() error { return h.w.Start(ctx) },
+		func() error { return h.w.SignIn(ctx, "admin", "pw") },
+		func() error { return h.w.SetDynuKey(ctx, testKey) },
+		func() error { return h.w.ClaimName(ctx, "mymedia", "freeddns.org") },
+	} {
+		if err := step(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var found string
+	for _, w := range h.w.Model().Warnings {
+		if w.Code == mode.WarnNonStandardPort {
+			found = w.Text
+		}
+	}
+	if found == "" {
+		t.Fatal("the address moved to the alternative port and nothing said why")
+	}
+	if !strings.Contains(found, "8443") {
+		t.Errorf("the warning does not name the port: %q", found)
+	}
+	if strings.Contains(found, "on this computer") {
+		t.Errorf("blamed this computer for a port the router forwards elsewhere: %q", found)
+	}
+	if !strings.Contains(found, "network") {
+		t.Errorf("the warning does not say where the conflict is: %q", found)
+	}
+}
+
+// conflictThenOKMapper refuses 443 the way a router with an existing forward
+// does, and accepts the alternative.
+type conflictThenOKMapper struct{ calls int }
+
+func (m *conflictThenOKMapper) Add(ctx context.Context, req portmap.Request) (*portmap.Result, error) {
+	m.calls++
+	if req.ExternalPort == mode.PortPreferred {
+		return nil, &portmap.UPnPError{Code: 718}
+	}
+	return &portmap.Result{
+		Mapping: portmap.Mapping{
+			ExternalPort: req.ExternalPort,
+			InternalPort: req.InternalPort,
+			LeaseSeconds: 0,
+		},
+		PermanentRequested: true,
+		VerifiedByReadback: true,
+	}, nil
 }
