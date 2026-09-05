@@ -6,8 +6,9 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"syscall"
 	"time"
+
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/proc"
 )
 
 // The Windows Event Log, written through eventcreate.exe.
@@ -65,9 +66,7 @@ func raise(ctx context.Context, l Level, subject, body string) error {
 	// No console window: rasa-sync is built for the GUI subsystem and a
 	// flashing black box every ten minutes would be worse than the silence
 	// this replaces.
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-
-	if out, err := cmd.CombinedOutput(); err != nil {
+	if out, err := proc.CombinedOutput(cmd); err != nil {
 		return fmt.Errorf("eventcreate: %w (%s)", err, out)
 	}
 	return nil

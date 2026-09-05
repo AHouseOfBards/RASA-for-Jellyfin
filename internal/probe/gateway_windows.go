@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/proc"
 )
 
 // defaultGateway finds the LAN address of the default route.
@@ -23,7 +25,7 @@ func defaultGateway(ctx context.Context) (netip.Addr, bool) {
 	const ps = `(Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue |` +
 		` Sort-Object RouteMetric | Select-Object -First 1).NextHop`
 
-	out, err := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", ps).Output()
+	out, err := proc.Output(exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", ps))
 	if err != nil {
 		return netip.Addr{}, false
 	}

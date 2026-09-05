@@ -187,6 +187,15 @@
     <section class="screen" data-screen="port">
       <h1 id="port-title">Opening the door</h1>
       <p class="lede" id="port-lede"></p>
+      <!-- What the last Test again did. A retry that fails re-renders this
+           screen unchanged, so without this the button looks like it does
+           nothing at all -- which is exactly how it was reported. The time is
+           part of the point: it is the proof the button did something even
+           when the answer has not changed. -->
+      <div class="notice" id="port-retry" hidden>
+        <p><strong id="port-retry-text"></strong></p>
+        <p class="hint" id="port-retry-time"></p>
+      </div>
       <!-- Shown when the router never offered automatic port mapping. Without
            it the user has no way to know the feature exists, that their router
            has it switched off, or that turning it on would skip this screen

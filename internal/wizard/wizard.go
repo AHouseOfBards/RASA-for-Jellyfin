@@ -109,6 +109,15 @@ type Wizard struct {
 	// both of the above for the same reason.
 	chosenRouter string
 
+	// retry records what changed the last time the user pressed Test again.
+	//
+	// Without it the button is indistinguishable from a no-op: a retry that
+	// fails re-renders the same screen, so the only visible effect is a few
+	// seconds of greyed-out buttons. Reported from a real run as "I enabled
+	// UPnP, told RASA to test again, then nothing happened. Is UPnP working?
+	// Is nothing working? I have no clue."
+	retry *portRetry
+
 	busy bool
 	subs map[chan Model]struct{}
 }
@@ -941,9 +950,51 @@ func (w *Wizard) OpenPort(ctx context.Context) error {
 	// Turning UPnP on in the router's settings is the same shape of problem,
 	// and it is the single most likely thing for a user to have just changed
 	// when they press this button.
+	w.mu.Lock()
+	offeredBefore := w.probed.Router.PortMappingAvailable
+	w.mu.Unlock()
+
 	w.reprobe(ctx)
 
+	w.mu.Lock()
+	w.retry = &portRetry{
+		offeredBefore: offeredBefore,
+		offeredNow:    w.probed.Router.PortMappingAvailable,
+		at:            time.Now(),
+	}
+	w.mu.Unlock()
+
 	return w.openPort(ctx)
+}
+
+// portRetry is what the last Test again did, so the screen can say so.
+type portRetry struct {
+	// offeredBefore and offeredNow are whether the router advertised automatic
+	// port opening, before and after the re-probe. The change between them is
+	// the answer to "did turning UPnP on work?", which is the question the
+	// user is actually asking when they press the button.
+	offeredBefore bool
+	offeredNow    bool
+	at            time.Time
+}
+
+// outcome describes the retry in one sentence, given whether a mapping now
+// exists.
+func (r *portRetry) outcome(mapped bool) string {
+	switch {
+	case mapped && !r.offeredBefore && r.offeredNow:
+		return "Your router is now offering to open ports by itself, and it opened one. There is one thing left to do below to make it permanent."
+	case mapped:
+		return "Your router opened the port, but only temporarily. The steps below make it permanent."
+	case !r.offeredBefore && r.offeredNow:
+		return "Your router is now offering to open ports by itself, so the setting took effect — but it refused this request. Following the steps below will still work."
+	case r.offeredBefore && !r.offeredNow:
+		return "Your router has stopped offering to open ports by itself since the last check."
+	case r.offeredNow:
+		return "Your router still refused to open the port by itself. Nothing changed since the last check."
+	default:
+		return "Your router still isn't offering to open ports by itself. If you just turned UPnP on, it may not have saved, or the router may need restarting."
+	}
 }
 
 // reprobe refreshes the network picture, keeping everything already decided.
@@ -1090,7 +1141,7 @@ func (w *Wizard) showGuide(res probe.Result, d mode.Decision, mapped *state.Port
 	})
 
 	w.mu.Lock()
-	generic, chosen := w.wantGenericGuide, w.chosenRouter
+	generic, chosen, retry := w.wantGenericGuide, w.chosenRouter, w.retry
 	w.mu.Unlock()
 
 	// What the user said last wins over what the network said, in both
@@ -1144,6 +1195,12 @@ func (w *Wizard) showGuide(res probe.Result, d mode.Decision, mapped *state.Port
 		// user to go and enable a setting they already have on wastes their
 		// time on the screen where they have least patience for it.
 		AutomaticOff: mapped == nil && !res.Router.PortMappingAvailable,
+	}
+	// Only after a retry. On the first arrival there is nothing to compare
+	// against, and the screen's own lede already says where things stand.
+	if retry != nil {
+		view.RetryOutcome = retry.outcome(mapped != nil)
+		view.CheckedAt = retry.at.Format("15:04:05")
 	}
 	if mapped != nil {
 		view.Open = true

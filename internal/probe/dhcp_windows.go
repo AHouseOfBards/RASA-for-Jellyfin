@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/proc"
 )
 
 // addressIsDHCP reports whether the address came from a DHCP lease.
@@ -24,7 +26,7 @@ func addressIsDHCP(ctx context.Context, addr netip.Addr) bool {
 
 	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command",
 		"(Get-NetIPAddress -IPAddress '"+addr.String()+"' -ErrorAction SilentlyContinue).PrefixOrigin")
-	out, err := cmd.Output()
+	out, err := proc.Output(cmd)
 	if err != nil {
 		return true
 	}

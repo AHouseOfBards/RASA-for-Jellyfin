@@ -15,6 +15,8 @@ import (
 
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/logging"
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/service"
+
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/proc"
 )
 
 // BinaryName is the bundled executable's filename.
@@ -165,7 +167,7 @@ func (in *Installer) Validate(ctx context.Context, env map[string]string) error 
 
 	cmd := exec.CommandContext(ctx, in.BinaryPath, "validate", "--config", in.CaddyfilePath, "--adapter", "caddyfile")
 	cmd.Env = append(os.Environ(), envPairs(env)...)
-	out, err := cmd.CombinedOutput()
+	out, err := proc.CombinedOutput(cmd)
 	if err == nil {
 		in.log("proxy configuration validated")
 		return nil
@@ -253,7 +255,7 @@ func missingModule(detail string) (directive, module string, ok bool) {
 func (in *Installer) Version(ctx context.Context) string {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, in.BinaryPath, "version").Output()
+	out, err := proc.Output(exec.CommandContext(ctx, in.BinaryPath, "version"))
 	if err != nil {
 		return ""
 	}
@@ -346,7 +348,7 @@ var RequiredModules = []string{"dns.providers.dynu", "http.handlers.rate_limit"}
 // An error means the question could not be asked at all, which is not the same
 // as the modules being absent and must not be reported as if it were.
 func MissingModules(ctx context.Context, binary string) ([]string, error) {
-	out, err := exec.CommandContext(ctx, binary, "list-modules").CombinedOutput()
+	out, err := proc.CombinedOutput(exec.CommandContext(ctx, binary, "list-modules"))
 	if err != nil {
 		return nil, fmt.Errorf("asking %s which modules it has: %w", binary, err)
 	}

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/logging"
+
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/proc"
 )
 
 // FirewallRuleName is the inbound rule RASA maintains.
@@ -38,7 +40,7 @@ func AllowProgram(ctx context.Context, exePath string, log *logging.Logger) erro
 	// machine that has run setup five times ends up with five.
 	del := exec.CommandContext(ctx, "netsh", "advfirewall", "firewall", "delete", "rule",
 		"name="+FirewallRuleName)
-	if out, err := del.CombinedOutput(); err != nil && log != nil {
+	if out, err := proc.CombinedOutput(del); err != nil && log != nil {
 		// Deleting a rule that does not exist fails, which is the normal case
 		// on a first run. Debug, not warn.
 		log.Debug("no existing firewall rule to replace", slog.String("detail", strings.TrimSpace(string(out))))
@@ -50,7 +52,7 @@ func AllowProgram(ctx context.Context, exePath string, log *logging.Logger) erro
 		"program="+exePath,
 		"enable=yes", "profile=any",
 	)
-	out, err := add.CombinedOutput()
+	out, err := proc.CombinedOutput(add)
 	text := strings.ToLower(strings.TrimSpace(string(out)))
 	if strings.Contains(text, "requires elevation") {
 		return ErrNeedsPrivileges
@@ -71,7 +73,7 @@ func RemoveFirewallRule(ctx context.Context) error {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "netsh", "advfirewall", "firewall", "delete", "rule",
 		"name="+FirewallRuleName)
-	out, err := cmd.CombinedOutput()
+	out, err := proc.CombinedOutput(cmd)
 	text := strings.ToLower(strings.TrimSpace(string(out)))
 
 	// netsh reports both of the interesting outcomes on stdout with exit

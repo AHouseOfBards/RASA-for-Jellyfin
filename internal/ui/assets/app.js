@@ -474,6 +474,18 @@ function renderPort() {
 
   renderUPnPNotice(p);
 
+  // Shown on the guide and on the empty screen alike: "nothing happened" was
+  // reported from the state where there are no instructions to look at, which
+  // is the one place a silent retry is most confusing.
+  const retry = document.getElementById("port-retry");
+  retry.hidden = !p.retry_outcome;
+  if (p.retry_outcome) {
+    document.getElementById("port-retry-text").textContent = p.retry_outcome;
+    document.getElementById("port-retry-time").textContent = p.checked_at
+      ? `Checked at ${p.checked_at}.`
+      : "";
+  }
+
   if (!p.instructions || p.instructions.length === 0) {
     guide.hidden = true;
     // Only claim to be working when something actually is. This screen used to

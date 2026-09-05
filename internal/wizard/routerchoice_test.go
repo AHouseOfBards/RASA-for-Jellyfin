@@ -169,3 +169,70 @@ func TestChoosingARouterThatIsNotInTheCatalogueIsRefused(t *testing.T) {
 		t.Errorf("the guide changed to %q", got)
 	}
 }
+
+// Pressing Test again must say what it did. A retry that fails re-renders the
+// same screen, so without an outcome the button is indistinguishable from a
+// no-op -- which is how it was reported: "I enabled UPnP, told RASA to test
+// again, then nothing happened."
+func TestTestAgainSaysWhatItDid(t *testing.T) {
+	h := newHarness(t, func(o *Options) {
+		o.NewMapper = func(string, string) PortMapper {
+			return &fakeMapper{err: &portmap.UPnPError{Code: 718}}
+		}
+	})
+	// Arrive with UPnP switched off, which is what puts anyone on this screen.
+	h.seed.Router.PortMappingAvailable = false
+
+	// Arrive the way a user does. ClaimName starts the port step itself, so
+	// this is the first attempt, not a retry.
+	ctx := context.Background()
+	for _, step := range []func() error{
+		func() error { return h.w.Start(ctx) },
+		func() error { return h.w.SignIn(ctx, "admin", "pw") },
+		func() error { return h.w.SetDynuKey(ctx, testKey) },
+		func() error { return h.w.ClaimName(ctx, "mymedia", "freeddns.org") },
+	} {
+		if err := step(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := h.w.Model()
+	if m.Screen != ScreenPort {
+		t.Fatalf("screen = %s, want the port screen", m.Screen)
+	}
+	if m.Port.RetryOutcome != "" {
+		t.Errorf("an outcome was claimed before any retry: %q", m.Port.RetryOutcome)
+	}
+
+	// Press it with nothing changed: it still has to answer.
+	if err := h.w.OpenPort(ctx); err != nil {
+		t.Fatal(err)
+	}
+	m = h.w.Model()
+	if m.Port.RetryOutcome == "" {
+		t.Fatal("Test again produced no outcome at all")
+	}
+	if !strings.Contains(m.Port.RetryOutcome, "isn't offering") {
+		t.Errorf("outcome does not say UPnP is still off: %q", m.Port.RetryOutcome)
+	}
+	if m.Port.CheckedAt == "" {
+		t.Error("no time recorded, so a repeated identical answer still looks like nothing happened")
+	}
+
+	// Now the user turns UPnP on. The router advertises it but still refuses
+	// the mapping -- the outcome has to distinguish those two things, because
+	// "did my change take effect?" is the actual question being asked.
+	h.seed.Router.PortMappingAvailable = true
+	if err := h.w.OpenPort(ctx); err != nil {
+		t.Fatal(err)
+	}
+	m = h.w.Model()
+	if !strings.Contains(m.Port.RetryOutcome, "now offering") {
+		t.Errorf("turning UPnP on was not reported back: %q", m.Port.RetryOutcome)
+	}
+	// And the "go and turn UPnP on" notice must stop being shown, since it is
+	// on.
+	if m.Port.AutomaticOff {
+		t.Error("still telling the user to enable UPnP after they enabled it")
+	}
+}

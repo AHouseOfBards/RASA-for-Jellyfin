@@ -167,6 +167,17 @@ type PortView struct {
 	// AdminURL is the router's own settings page, so the screen can link to it
 	// rather than describing how to reach it.
 	AdminURL string `json:"admin_url,omitempty"`
+	// RetryOutcome says what the last Test again actually did, and in
+	// particular whether turning UPnP on took effect.
+	//
+	// A retry that fails re-renders this screen unchanged, so without this the
+	// button is indistinguishable from a no-op. Reported from a real run:
+	// "I enabled UPnP, told RASA to test again, then nothing happened. Is UPnP
+	// working? Is nothing working? I have no clue."
+	RetryOutcome string `json:"retry_outcome,omitempty"`
+	// CheckedAt is the local time of that check, as HH:MM:SS. It is the proof
+	// the button did something even when the answer has not changed.
+	CheckedAt string `json:"checked_at,omitempty"`
 	// UPnPPath is where this router hides the setting that would let RASA do
 	// this step by itself. Empty when the catalogue has no verified path, in
 	// which case the screen says what the setting is called instead of

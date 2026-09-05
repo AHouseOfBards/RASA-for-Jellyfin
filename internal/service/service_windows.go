@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/logging"
+
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/proc"
 )
 
 // Windows implementation, driven through sc.exe and schtasks.exe.
@@ -198,7 +200,7 @@ func (m *windowsManager) awaitAbsent(ctx context.Context, name string, timeout t
 func (m *windowsManager) run(ctx context.Context, name string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	out, err := proc.CombinedOutput(exec.CommandContext(ctx, name, args...))
 	return string(out), err
 }
 

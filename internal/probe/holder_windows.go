@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/AHouseOfBards/RASA-for-Jellyfin/internal/proc"
 )
 
 // identifyHolder names the process listening on a port.
@@ -33,7 +35,7 @@ func identifyHolder(ctx context.Context, port int) string {
 
 // listeningPID finds the PID owning a LISTENING socket on the port.
 func listeningPID(ctx context.Context, port int) int {
-	out, err := exec.CommandContext(ctx, "netstat", "-ano", "-p", "tcp").Output()
+	out, err := proc.Output(exec.CommandContext(ctx, "netstat", "-ano", "-p", "tcp"))
 	if err != nil {
 		return 0
 	}
@@ -57,7 +59,7 @@ func listeningPID(ctx context.Context, port int) int {
 }
 
 func processName(ctx context.Context, pid int) string {
-	out, err := exec.CommandContext(ctx, "tasklist", "/FI", "PID eq "+strconv.Itoa(pid), "/NH", "/FO", "CSV").Output()
+	out, err := proc.Output(exec.CommandContext(ctx, "tasklist", "/FI", "PID eq "+strconv.Itoa(pid), "/NH", "/FO", "CSV"))
 	if err != nil {
 		return ""
 	}
