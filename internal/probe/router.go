@@ -123,8 +123,18 @@ func (p *RouterProber) Probe(ctx context.Context) Router {
 	// and fetching an admin page nobody is going to read costs the user
 	// seconds on a screen they are waiting in front of.
 	if out.Vendor == "" && out.Model == "" {
-		out.Banner = readBanner(ctx, out.Gateway, p.BannerTimeout)
-		p.Log.Debug("read gateway banner", slog.String("banner", out.Banner))
+		var adminURL string
+		out.Banner, adminURL = readBanner(ctx, out.Gateway, p.BannerTimeout)
+		// Whichever address answered is the settings page, which is worth more
+		// than the banner on its own: the instructions used to tell everyone to
+		// open http://<gateway>, and a router that serves on any other port —
+		// Verizon on 450, Synology on 8000 — was sending the user somewhere
+		// with nothing on it.
+		if out.AdminURL == "" {
+			out.AdminURL = adminURL
+		}
+		p.Log.Debug("read gateway banner",
+			slog.String("banner", out.Banner), slog.String("admin_url", out.AdminURL))
 	}
 
 	p.Log.Debug("router probe complete",
@@ -176,12 +186,17 @@ func (p *RouterProber) queryIGD(ctx context.Context, out *Router) {
 				described = true
 				out.Vendor = strings.TrimSpace(desc.Device.Manufacturer)
 				out.Model = strings.TrimSpace(firstNonEmpty(desc.Device.ModelName, desc.Device.ModelNumber, desc.Device.FriendlyName))
+				// It is still the router, and it still knows where its own
+				// settings page is. That is the one thing the manual
+				// instructions need most from a router that cannot help.
+				out.AdminURL = presentationURL(desc, c.location)
 			}
 			continue
 		}
 		described = true
 		out.Vendor = strings.TrimSpace(desc.Device.Manufacturer)
 		out.Model = strings.TrimSpace(firstNonEmpty(desc.Device.ModelName, desc.Device.ModelNumber, desc.Device.FriendlyName))
+		out.AdminURL = presentationURL(desc, c.location)
 		if c.from.IsValid() {
 			// The address it replied from is its LAN address, which is more
 			// reliable than parsing a routing table.
@@ -384,13 +399,17 @@ func ssdpHeader(b []byte, name string) string {
 // upnpDevice mirrors the parts of a device description RASA reads. Devices
 // nest, so this is recursive.
 type upnpDevice struct {
-	DeviceType   string       `xml:"deviceType"`
-	FriendlyName string       `xml:"friendlyName"`
-	Manufacturer string       `xml:"manufacturer"`
-	ModelName    string       `xml:"modelName"`
-	ModelNumber  string       `xml:"modelNumber"`
-	Services     []upnpSvc    `xml:"serviceList>service"`
-	Devices      []upnpDevice `xml:"deviceList>device"`
+	DeviceType   string `xml:"deviceType"`
+	FriendlyName string `xml:"friendlyName"`
+	// PresentationURL is the device's own settings page. For a router this is
+	// the authoritative answer to "where do I sign in?", which beats assuming
+	// http on port 80 of the gateway.
+	PresentationURL string       `xml:"presentationURL"`
+	Manufacturer    string       `xml:"manufacturer"`
+	ModelName       string       `xml:"modelName"`
+	ModelNumber     string       `xml:"modelNumber"`
+	Services        []upnpSvc    `xml:"serviceList>service"`
+	Devices         []upnpDevice `xml:"deviceList>device"`
 }
 
 type upnpSvc struct {
@@ -445,6 +464,17 @@ func findWANService(d *upnpDevice, base string) (controlURL, serviceType string)
 		}
 	}
 	return "", ""
+}
+
+// presentationURL is the router's own settings page, resolved against where
+// its description was fetched from. Devices report it as a full URL, an
+// absolute path, or not at all.
+func presentationURL(desc *upnpRoot, base string) string {
+	p := strings.TrimSpace(desc.Device.PresentationURL)
+	if p == "" {
+		return ""
+	}
+	return absoluteURL(base, p)
 }
 
 // absoluteURL resolves a control URL, which devices report as an absolute

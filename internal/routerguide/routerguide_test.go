@@ -526,3 +526,35 @@ func TestLookupFindsAndRefuses(t *testing.T) {
 		t.Error("Lookup invented a router")
 	}
 }
+
+// Step one of these instructions is "open this and sign in". Building it as
+// http://<gateway> is wrong for every router that does not serve on port 80 --
+// Verizon's use https on 450, Synology's 8000 and 8001, ASUS's 8443 -- so a
+// known admin address must win over the guess.
+func TestAKnownAdminAddressBeatsTheGuess(t *testing.T) {
+	c := catalog(t)
+	gw := netip.MustParseAddr("192.168.1.1")
+
+	ins := Build(c.Generic(), Values{Gateway: gw, Port: 443, AdminURL: "https://192.168.1.1:450"})
+	if ins.AdminURL != "https://192.168.1.1:450" {
+		t.Errorf("AdminURL = %q, want the address the router actually answers on", ins.AdminURL)
+	}
+	var sawIt bool
+	for _, s := range ins.Steps {
+		if strings.Contains(s, "https://192.168.1.1:450") {
+			sawIt = true
+		}
+		if strings.Contains(s, "http://192.168.1.1 ") {
+			t.Errorf("the steps still send the user to port 80: %q", s)
+		}
+	}
+	if !sawIt {
+		t.Errorf("the real address never reached the steps: %v", ins.Steps)
+	}
+
+	// And with nothing known, the guess is still better than no link at all.
+	ins = Build(c.Generic(), Values{Gateway: gw, Port: 443})
+	if ins.AdminURL != "http://192.168.1.1" {
+		t.Errorf("fallback AdminURL = %q", ins.AdminURL)
+	}
+}

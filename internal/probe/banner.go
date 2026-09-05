@@ -45,9 +45,9 @@ var titlePattern = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 // Best effort throughout: a gateway with no admin page, one that refuses
 // unauthenticated requests, and one that is not listening on either port are
 // all normal and all mean "no banner", never an error.
-func readBanner(ctx context.Context, gw netip.Addr, budget time.Duration) string {
+func readBanner(ctx context.Context, gw netip.Addr, budget time.Duration) (banner, adminURL string) {
 	if !gw.IsValid() {
-		return ""
+		return "", ""
 	}
 	host := gw.String()
 	urls := make([]string, 0, len(adminPorts))
@@ -75,9 +75,15 @@ var adminPorts = []struct {
 	{"https", 443},
 	// Verizon's Fios routers (CR1000A, G3100), confirmed against a real one.
 	{"https", 450},
-	// Common alternates on ISP-supplied and prosumer gear.
-	{"http", 8080},
+	// Synology Router Manager: 8000 plain, 8001 secure, both by default.
+	// https://kb.synology.com/en-eu/SRM/tutorial/What_network_ports_are_used_by_SRM_services
+	{"http", 8000},
+	{"https", 8001},
+	// ASUSWRT serves https on 8443 by default.
+	// https://www.asus.com/support/faq/1045854/
 	{"https", 8443},
+	// A common plain alternate on ISP-supplied and prosumer gear.
+	{"http", 8080},
 }
 
 func bannerClient() *http.Client {
@@ -103,30 +109,31 @@ func bannerClient() *http.Client {
 // seconds, which produced a banner when asked on its own and nothing at all
 // from inside a probe. Every address here is the same device, so whichever
 // names it first is the answer.
-func raceBanners(ctx context.Context, client *http.Client, urls []string, budget time.Duration) string {
+func raceBanners(ctx context.Context, client *http.Client, urls []string, budget time.Duration) (banner, adminURL string) {
 	if budget <= 0 {
 		budget = DefaultBannerTimeout
 	}
 	ctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 
+	type answer struct{ banner, url string }
 	// Buffered to the full width: an attempt that finishes after an earlier
 	// one has already won must not block on a channel nobody is reading.
-	found := make(chan string, len(urls))
+	found := make(chan answer, len(urls))
 	for _, u := range urls {
-		go func(u string) { found <- fetchBanner(ctx, client, u) }(u)
+		go func(u string) { found <- answer{fetchBanner(ctx, client, u), u} }(u)
 	}
 	for range urls {
 		select {
-		case b := <-found:
-			if b != "" {
-				return b
+		case a := <-found:
+			if a.banner != "" {
+				return a.banner, a.url
 			}
 		case <-ctx.Done():
-			return ""
+			return "", ""
 		}
 	}
-	return ""
+	return "", ""
 }
 
 func fetchBanner(ctx context.Context, client *http.Client, url string) string {

@@ -59,7 +59,7 @@ func TestBannerIsEmptyWhenTheGatewaySaysNothingUseful(t *testing.T) {
 }
 
 func TestNoGatewayMeansNoBanner(t *testing.T) {
-	if got := readBanner(context.Background(), netip.Addr{}, 0); got != "" {
+	if got, url := readBanner(context.Background(), netip.Addr{}, 0); got != "" || url != "" {
 		t.Errorf("banner = %q with no gateway address", got)
 	}
 }
@@ -114,7 +114,7 @@ func TestASlowAddressDoesNotStarveTheOther(t *testing.T) {
 	defer quick.Close()
 
 	start := time.Now()
-	got := raceBanners(context.Background(), quick.Client(),
+	got, _ := raceBanners(context.Background(), quick.Client(),
 		[]string{slow.URL + "/", quick.URL + "/"}, 2*time.Second)
 	if !strings.Contains(got, "Archer") {
 		t.Fatalf("banner = %q, want the one the reachable address served", got)
@@ -132,7 +132,7 @@ func TestBannerGivesUpWhenNothingAnswers(t *testing.T) {
 	defer dead.Close()
 
 	start := time.Now()
-	if got := raceBanners(context.Background(), dead.Client(), []string{dead.URL + "/"}, 300*time.Millisecond); got != "" {
+	if got, _ := raceBanners(context.Background(), dead.Client(), []string{dead.URL + "/"}, 300*time.Millisecond); got != "" {
 		t.Errorf("banner = %q", got)
 	}
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
@@ -183,7 +183,7 @@ func TestReadBannerAsksEveryAdminPort(t *testing.T) {
 	}
 	urls[len(urls)-1] = srv.URL + "/"
 
-	got := raceBanners(context.Background(), srv.Client(), urls, 2*time.Second)
+	got, _ := raceBanners(context.Background(), srv.Client(), urls, 2*time.Second)
 	if !strings.Contains(got, "Verizon") {
 		t.Errorf("banner = %q, want the one address that answered", got)
 	}

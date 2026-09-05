@@ -258,6 +258,16 @@ type Values struct {
 	Port int
 	// AddressIsDHCP drives whether the reservation step is included.
 	AddressIsDHCP bool
+	// AdminURL is the router's settings page when it is actually known — from
+	// the router's own UPnP description, or from whichever address answered
+	// when RASA went looking for its banner.
+	//
+	// Without it this was built as http://<gateway>, which is wrong for every
+	// router that does not serve on port 80: Verizon's use https on 450,
+	// Synology's 8000 and 8001, ASUS's 8443. Step one of these instructions is
+	// "open this and sign in", so getting it wrong fails the user on the first
+	// line of a list they are already nervous about following.
+	AdminURL string
 }
 
 // Field is one labelled value to copy into the router.
@@ -303,7 +313,12 @@ func Build(e Entry, v Values) Instructions {
 		ReservationPath:     e.ReservationPath,
 		Generic:             e.IsDefault(),
 	}
-	if v.Gateway.IsValid() {
+	switch {
+	case v.AdminURL != "":
+		ins.AdminURL = v.AdminURL
+	case v.Gateway.IsValid():
+		// The guess, kept only as a last resort. Port 80 on the gateway is
+		// right for most routers and wrong for a significant minority.
 		ins.AdminURL = "http://" + v.Gateway.String()
 	}
 

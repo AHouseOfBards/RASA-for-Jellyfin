@@ -125,6 +125,17 @@ type Router struct {
 	// cooperation from the router.
 	MAC string
 
+	// AdminURL is the router's settings page, as the router itself reports it
+	// or as it was found to answer. Empty when neither is known.
+	//
+	// Step one of the port-forwarding instructions is "open this and sign in",
+	// and it was built by assuming http on port 80 of the gateway. That is
+	// simply wrong for a great many routers — Verizon's serve https on 450,
+	// Synology's on 8000 and 8001, ASUS's on 8443 — and sending someone to a
+	// port with nothing on it is a bad first step in a list they are already
+	// nervous about following.
+	AdminURL string
+
 	// UPnPStatus records how far the UPnP conversation got.
 	//
 	// "Automatic port opening is unavailable" covers several different

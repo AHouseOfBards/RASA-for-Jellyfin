@@ -1161,6 +1161,7 @@ func (w *Wizard) showGuide(res probe.Result, d mode.Decision, mapped *state.Port
 		InternalIP:    res.Host.LANAddress,
 		Port:          d.ListenPort,
 		AddressIsDHCP: res.Host.AddressIsDHCP,
+		AdminURL:      res.Router.AdminURL,
 	})
 
 	w.mu.Lock()
