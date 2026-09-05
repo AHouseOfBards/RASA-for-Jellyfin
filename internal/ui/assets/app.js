@@ -536,9 +536,9 @@ function renderPort() {
   if (p.open) {
     document.getElementById("port-title").textContent = "Your router opened the port";
     lede.textContent =
-      "Remote access will work once setup finishes. Your router only opened the port temporarily, " +
-      "so it will stop working when the router restarts. The steps below make it permanent. " +
-      "You can also carry on now and do them later.";
+      "Remote access will work once setup finishes. Your router would only open the port for a week, " +
+      "though, and sooner than that if it restarts. The steps below replace that with a permanent rule. " +
+      "You can carry on now and do them later, but do them.";
     document.getElementById("port-steps-heading").textContent = "To make it permanent";
   } else {
     document.getElementById("port-title").textContent = "One thing to do on your router";

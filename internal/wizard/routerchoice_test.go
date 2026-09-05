@@ -403,7 +403,12 @@ func TestContinuingWithATemporaryOpeningSaysItIsTemporary(t *testing.T) {
 	if strings.Contains(got.Text, "not confirmed open") {
 		t.Errorf("claimed the port was never opened: %q", got.Text)
 	}
-	if !strings.Contains(got.Text, "temporarily") {
-		t.Errorf("does not say the opening is temporary: %q", got.Text)
+	// It has to say when it lapses, not merely that it is temporary: the
+	// lease is a week, so "until the router restarts" understates it.
+	if !strings.Contains(got.Text, "week") {
+		t.Errorf("does not say how long the opening lasts: %q", got.Text)
+	}
+	if !strings.Contains(got.Text, "permanent") {
+		t.Errorf("does not point at the fix: %q", got.Text)
 	}
 }

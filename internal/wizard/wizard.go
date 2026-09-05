@@ -1263,7 +1263,7 @@ func (w *Wizard) SkipPort(ctx context.Context) error {
 		"Your router port was not confirmed open. If your server can't be reached from outside, the instructions in your recovery file will fix it."
 	if mapped != nil && !mapped.Permanent {
 		code, text = "finite_lease",
-			fmt.Sprintf("Your router opened port %d, but only temporarily, and it will forget when it restarts. The router settings in this file make it permanent.", mapped.ExternalPort)
+			fmt.Sprintf("Your router opened port %d, but only for a week, and sooner than that if it restarts. Remote access will stop when it lapses. The router settings in this file replace it with a permanent rule.", mapped.ExternalPort)
 	}
 
 	w.mu.Lock()

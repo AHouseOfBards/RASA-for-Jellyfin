@@ -558,3 +558,52 @@ func TestAKnownAdminAddressBeatsTheGuess(t *testing.T) {
 		t.Errorf("fallback AdminURL = %q", ins.AdminURL)
 	}
 }
+
+// Notes are read by someone standing in their router's admin page, on the
+// screen where things have already gone wrong. A paragraph of prose there was
+// reported as "a mess of text of explanations", so length is a real constraint
+// rather than a style preference.
+func TestNotesStayShortEnoughToRead(t *testing.T) {
+	const limit = 300
+	c := catalog(t)
+	for _, k := range c.order {
+		n := c.entries[k].Note
+		if len(n) > limit {
+			t.Errorf("%s: note is %d characters, limit is %d. Cut it to the thing people actually get stuck on:\n  %s",
+				k, len(n), limit, n)
+		}
+	}
+}
+
+// Em dashes read as machine-written, and every one of these strings is shown
+// to a user or written into the recovery file.
+func TestNoEmDashesInAnythingTheUserReads(t *testing.T) {
+	c := catalog(t)
+	for _, k := range c.order {
+		e := c.entries[k]
+		for field, text := range map[string]string{
+			"name":            e.Name,
+			"path":            e.Path,
+			"note":            e.Note,
+			"reservationPath": e.ReservationPath,
+			"upnpPath":        e.UPnPPath,
+		} {
+			if strings.ContainsRune(text, '\u2014') {
+				t.Errorf("%s: %s contains an em dash: %s", k, field, text)
+			}
+		}
+	}
+}
+
+// Step one of the instructions is built from the address RASA found the router
+// answering on. A second, guessed address inside the menu path gives the user
+// two different answers to the same question.
+func TestMenuPathsDoNotCarryTheirOwnAdminAddress(t *testing.T) {
+	c := catalog(t)
+	for _, k := range c.order {
+		if strings.Contains(c.entries[k].Path, "http") {
+			t.Errorf("%s: the menu path embeds an admin address, which step one already provides: %s",
+				k, c.entries[k].Path)
+		}
+	}
+}
