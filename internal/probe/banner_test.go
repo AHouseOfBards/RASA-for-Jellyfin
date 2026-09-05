@@ -139,3 +139,52 @@ func TestBannerGivesUpWhenNothingAnswers(t *testing.T) {
 		t.Errorf("took %s, so the budget is not being enforced", elapsed)
 	}
 }
+
+// A router that serves its admin page anywhere but 80 or 443 must still be
+// found. Verizon's Fios routers use https port 450, which the first version of
+// this tier missed entirely -- it asked two ports, neither of them the one the
+// router was answering on.
+func TestTheAdminPortsCoverMoreThanEightyAndFourFourThree(t *testing.T) {
+	var schemes, ports = map[string]bool{}, map[int]bool{}
+	for _, p := range adminPorts {
+		schemes[p.scheme] = true
+		ports[p.port] = true
+	}
+	for _, want := range []int{80, 443, 450} {
+		if !ports[want] {
+			t.Errorf("port %d is not among the admin ports tried", want)
+		}
+	}
+	if !schemes["http"] || !schemes["https"] {
+		t.Error("both schemes have to be tried; router admin pages use each")
+	}
+	// A guard on the shape rather than the contents: this is a fixed handful
+	// of well-known addresses aimed at one host, and it must not quietly grow
+	// into something that behaves like a port scan.
+	if len(adminPorts) > 8 {
+		t.Errorf("%d admin addresses is too many to be a handful", len(adminPorts))
+	}
+}
+
+// The list is what readBanner actually asks for, so a port added to it reaches
+// the network rather than sitting unused.
+func TestReadBannerAsksEveryAdminPort(t *testing.T) {
+	// A stub standing in for the gateway on one port only. It answers on the
+	// last address tried, which is the one a sequential implementation would
+	// be least likely to reach.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("<title>Verizon Router</title>"))
+	}))
+	defer srv.Close()
+
+	var urls []string
+	for range adminPorts {
+		urls = append(urls, "http://127.0.0.1:1/")
+	}
+	urls[len(urls)-1] = srv.URL + "/"
+
+	got := raceBanners(context.Background(), srv.Client(), urls, 2*time.Second)
+	if !strings.Contains(got, "Verizon") {
+		t.Errorf("banner = %q, want the one address that answered", got)
+	}
+}

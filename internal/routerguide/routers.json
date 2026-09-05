@@ -136,6 +136,8 @@
       "banner": ["Verizon", "Fios", "Actiontec"]
     },
     "path": "Advanced → Security & Firewall → Port Forwarding",
+    "upnpPath": "Advanced → Devices → Universal Plug & Play",
+    "upnpSource": "verified on a Verizon CR1000A admin page, which serves on https port 450",
     "note": "The Advanced toggle is the step people miss: in the simple view there is no Port Forwarding entry at all. The rule asks for 'Original port' and 'Frwd to Port', which are both the port below, and a Schedule, which must be left on Always rather than User Defined. On an older Fios Quantum Gateway (G1100 or MI424WR) there is no Advanced toggle and it is simply Firewall → Port Forwarding along the top.",
     "reservationPath": "Advanced → Network Settings, in the DHCP settings for your network",
     "source": "https://www.verizon.com/content/dam/verizon/support/consumer/documents/internet/fios-router-user-guide.pdf and https://www.verizon.com/content/dam/verizon/support/consumer/documents/fqgrouter-userguide.pdf"

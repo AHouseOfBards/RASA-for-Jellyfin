@@ -109,7 +109,7 @@ func (p *RouterProber) Probe(ctx context.Context) Router {
 // queryIGD fills in everything that only UPnP can tell us. Every failure is
 // soft: a router that does not speak IGD leaves out untouched.
 func (p *RouterProber) queryIGD(ctx context.Context, out *Router) {
-	loc, from, err := p.discover(ctx)
+	loc, from, err := p.discover(ctx, out.Gateway)
 	if err != nil {
 		// Info, not debug. This is the single most asked question about this
 		// step -- "why isn't UPnP working for me?" -- and at debug level the
@@ -164,16 +164,45 @@ func (p *RouterProber) queryIGD(ctx context.Context, out *Router) {
 
 // discover sends an SSDP M-SEARCH and returns the first IGD location found,
 // along with the address it replied from.
-func (p *RouterProber) discover(ctx context.Context) (location string, from netip.Addr, err error) {
-	conn, err := net.ListenPacket("udp4", ":0")
+func (p *RouterProber) discover(ctx context.Context, gw netip.Addr) (location string, from netip.Addr, err error) {
+	// Bound to the address that faces the router, not to whatever the system
+	// would pick.
+	//
+	// Discovery is a multicast datagram, and the interface it leaves by comes
+	// from the routing table. A VPN adapter usually holds the lowest metric on
+	// the machine, so with a tunnel up the search goes out of the tunnel and
+	// the router never hears it — and the symptom is that UPnP looks switched
+	// off while its own settings page plainly says it is on. Reported exactly
+	// that way, with a screenshot of the setting enabled.
+	local := ":0"
+	if src := addressFacing(gw); src.IsValid() {
+		local = netip.AddrPortFrom(src, 0).String()
+	}
+	conn, err := net.ListenPacket("udp4", local)
 	if err != nil {
-		return "", netip.Addr{}, err
+		// Falling back rather than failing: binding to a specific address can
+		// be refused, and an unbound socket is what this always used to do.
+		p.Log.Debug("could not bind discovery to the router-facing address",
+			slog.String("address", local), slog.Any("err", err))
+		conn, err = net.ListenPacket("udp4", ":0")
+		if err != nil {
+			return "", netip.Addr{}, err
+		}
 	}
 	defer conn.Close()
 
 	dst, err := net.ResolveUDPAddr("udp4", ssdpAddr)
 	if err != nil {
 		return "", netip.Addr{}, err
+	}
+
+	// The gateway is asked directly as well as over multicast. A unicast
+	// M-SEARCH to port 1900 is answered by essentially every IGD there is, and
+	// it needs no multicast routing to work at all — so it still arrives when
+	// the multicast has gone out of the wrong adapter.
+	targets := []net.Addr{dst}
+	if gw.IsValid() {
+		targets = append(targets, &net.UDPAddr{IP: net.IP(gw.AsSlice()), Port: 1900})
 	}
 
 	// MX is the maximum delay a device may wait before replying; keep it
@@ -193,12 +222,27 @@ func (p *RouterProber) discover(ctx context.Context) (location string, from neti
 		return "", netip.Addr{}, err
 	}
 
-	// Send twice: SSDP is UDP multicast and a single datagram is genuinely
-	// lost often enough to matter on busy wireless networks.
+	// Send twice to each: SSDP is UDP and a single datagram is genuinely lost
+	// often enough to matter on busy wireless networks.
+	//
+	// A send that fails is not fatal any more. Multicast can be refused
+	// outright on a machine whose routing makes no sense for it, and the
+	// unicast question to the gateway is the one likely to be answered in
+	// exactly that case — giving up on the first failure would throw away the
+	// attempt most likely to work.
+	var sent int
+	var lastErr error
 	for i := 0; i < 2; i++ {
-		if _, err := conn.WriteTo([]byte(msg), dst); err != nil {
-			return "", netip.Addr{}, err
+		for _, t := range targets {
+			if _, err := conn.WriteTo([]byte(msg), t); err != nil {
+				lastErr = err
+				continue
+			}
+			sent++
 		}
+	}
+	if sent == 0 {
+		return "", netip.Addr{}, fmt.Errorf("could not send a discovery request: %w", lastErr)
 	}
 
 	buf := make([]byte, 2048)

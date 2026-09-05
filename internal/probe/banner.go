@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"io"
+	"net"
 	"net/http"
 	"net/netip"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -48,10 +50,34 @@ func readBanner(ctx context.Context, gw netip.Addr, budget time.Duration) string
 		return ""
 	}
 	host := gw.String()
-	return raceBanners(ctx, bannerClient(), []string{
-		"http://" + host + "/",
-		"https://" + host + "/",
-	}, budget)
+	urls := make([]string, 0, len(adminPorts))
+	for _, p := range adminPorts {
+		urls = append(urls, p.scheme+"://"+net.JoinHostPort(host, strconv.Itoa(p.port))+"/")
+	}
+	return raceBanners(ctx, bannerClient(), urls, budget)
+}
+
+// adminPorts is where routers put their settings page.
+//
+// Not a scan: it is a fixed handful of well-known addresses, aimed only at the
+// default gateway, raced together so the whole set costs about what one
+// request does.
+//
+// 80 and 443 alone were not enough, which was found the moment this met real
+// hardware rather than a test: a Verizon router serves its admin page on
+// https port 450, so both attempts hit nothing and the router went
+// unidentified despite answering perfectly well one port over.
+var adminPorts = []struct {
+	scheme string
+	port   int
+}{
+	{"http", 80},
+	{"https", 443},
+	// Verizon's Fios routers (CR1000A, G3100), confirmed against a real one.
+	{"https", 450},
+	// Common alternates on ISP-supplied and prosumer gear.
+	{"http", 8080},
+	{"https", 8443},
 }
 
 func bannerClient() *http.Client {
