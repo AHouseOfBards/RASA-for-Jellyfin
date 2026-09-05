@@ -69,6 +69,34 @@ func (i Internet) HasV6() bool {
 		i.PublicV6.IsGlobalUnicast()
 }
 
+// UPnPStatus is how far the UPnP conversation with the gateway got. The
+// distinctions are not academic: each one has a different cause and a
+// different thing for the user to do about it.
+type UPnPStatus string
+
+const (
+	// UPnPUnknown means no attempt was made.
+	UPnPUnknown UPnPStatus = ""
+	// UPnPNoReply means nothing answered the discovery request. The setting is
+	// off, or the request never reached the router — a guest or isolated
+	// wireless network, a VLAN, or a firewall on this machine.
+	UPnPNoReply UPnPStatus = "no_reply"
+	// UPnPNoDescription means a gateway answered but would not describe
+	// itself, so nothing more could be asked of it.
+	UPnPNoDescription UPnPStatus = "no_description"
+	// UPnPNoPortService means the router speaks UPnP but offers no
+	// port-mapping service.
+	//
+	// This is the case worth naming. Many routers have a "UPnP" switch that
+	// turns on media sharing (UPnP AV / DLNA) and has nothing to do with
+	// opening ports, so someone can switch on the setting they were told to,
+	// see it stay on, and get no closer. The port-mapping half is often listed
+	// separately as IGD, NAT-PMP or PCP.
+	UPnPNoPortService UPnPStatus = "no_port_service"
+	// UPnPAvailable means a mapping can at least be attempted.
+	UPnPAvailable UPnPStatus = "available"
+)
+
 // Router is what the local gateway will admit to.
 type Router struct {
 	// Reachable is false when no gateway responded at all.
@@ -96,6 +124,16 @@ type Router struct {
 	// UPnP is off entirely. It is the only identification tier that needs no
 	// cooperation from the router.
 	MAC string
+
+	// UPnPStatus records how far the UPnP conversation got.
+	//
+	// "Automatic port opening is unavailable" covers several different
+	// situations that need completely different advice, and RASA knew which
+	// one it was and threw the answer away: the reason was logged at debug
+	// level, which a normal run does not record, and the screen said only that
+	// the feature was off. Asked directly -- "why isn't UPnP working for me?"
+	// -- there was nothing to look at.
+	UPnPStatus UPnPStatus
 
 	// Banner is what the gateway's own web server says about itself: its
 	// Server header, its authentication realm, and the title of whatever page

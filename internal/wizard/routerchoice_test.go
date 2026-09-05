@@ -236,3 +236,47 @@ func TestTestAgainSaysWhatItDid(t *testing.T) {
 		t.Error("still telling the user to enable UPnP after they enabled it")
 	}
 }
+
+// "Automatic port opening is unavailable" covers several different situations
+// that need completely different advice, and RASA knew which one it was and
+// said none of it. The worst case is a router that has a UPnP switch for media
+// sharing and no port opening at all: telling that user to go and turn UPnP on
+// sends them to a setting they have already turned on.
+func TestTheScreenSaysWhyUPnPIsUnavailable(t *testing.T) {
+	cases := []struct {
+		status probe.UPnPStatus
+		want   string
+	}{
+		{probe.UPnPNoPortService, "media sharing"},
+		{probe.UPnPNoReply, "did not answer"},
+		{probe.UPnPNoDescription, "would not say what it can do"},
+	}
+	for _, c := range cases {
+		t.Run(string(c.status), func(t *testing.T) {
+			h := newHarness(t, func(o *Options) {
+				o.NewMapper = func(string, string) PortMapper {
+					return &fakeMapper{err: &portmap.UPnPError{Code: 718}}
+				}
+			})
+			h.seed.Router.PortMappingAvailable = false
+			h.seed.Router.UPnPStatus = c.status
+
+			m := reachThePortScreen(t, h)
+			if !strings.Contains(m.Port.UPnPProblem, c.want) {
+				t.Errorf("UPnPProblem = %q, want it to mention %q", m.Port.UPnPProblem, c.want)
+			}
+		})
+	}
+
+	// And nothing is claimed when the router does offer it.
+	h := newHarness(t, func(o *Options) {
+		o.NewMapper = func(string, string) PortMapper {
+			return &fakeMapper{err: &portmap.UPnPError{Code: 718}}
+		}
+	})
+	h.seed.Router.UPnPStatus = probe.UPnPAvailable
+	m := reachThePortScreen(t, h)
+	if m.Port.UPnPProblem != "" {
+		t.Errorf("a problem was reported for a router that offers port opening: %q", m.Port.UPnPProblem)
+	}
+}

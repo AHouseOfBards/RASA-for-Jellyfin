@@ -389,6 +389,10 @@ function renderUPnPNotice(p) {
   box.hidden = !p.automatic_off;
   if (box.hidden) return;
 
+  const problem = document.getElementById("port-upnp-problem");
+  problem.textContent = p.upnp_problem || "";
+  problem.hidden = !p.upnp_problem;
+
   const where = document.getElementById("port-upnp-where");
   where.replaceChildren();
 

@@ -1195,6 +1195,7 @@ func (w *Wizard) showGuide(res probe.Result, d mode.Decision, mapped *state.Port
 		// user to go and enable a setting they already have on wastes their
 		// time on the screen where they have least patience for it.
 		AutomaticOff: mapped == nil && !res.Router.PortMappingAvailable,
+		UPnPProblem:  upnpProblem(res.Router.UPnPStatus),
 	}
 	// Only after a retry. On the first arrival there is nothing to compare
 	// against, and the screen's own lede already says where things stand.
@@ -1314,6 +1315,29 @@ func (w *Wizard) ChooseRouter(ctx context.Context, key string) error {
 		slog.String("router", entry.Name))
 	w.showGuide(res, d, w.currentMapping())
 	return nil
+}
+
+// upnpProblem turns how far the UPnP conversation got into the sentence that
+// tells the user what is actually wrong.
+//
+// The distinctions matter because the advice differs completely. Telling
+// someone to switch on a setting they have already switched on — which is what
+// this screen did for every one of these cases — is worse than saying nothing.
+func upnpProblem(s probe.UPnPStatus) string {
+	switch s {
+	case probe.UPnPNoPortService:
+		return "Your router does answer, but it does not offer to open ports. " +
+			"If you have already turned a setting called UPnP on, it is probably the media sharing one, " +
+			"which is a different feature with the same name. The one to look for may be listed as " +
+			"IGD, NAT-PMP or PCP instead."
+	case probe.UPnPNoDescription:
+		return "Your router answered but would not say what it can do, so RASA could not ask it to open a port."
+	case probe.UPnPNoReply:
+		return "Your router did not answer at all. Either the setting is off, or the request never reached it — " +
+			"which happens on guest and public wireless networks, and when this computer is on a different " +
+			"part of the network from the router."
+	}
+	return ""
 }
 
 // routerOptions lists the catalogue for the picker.

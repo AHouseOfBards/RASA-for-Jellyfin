@@ -99,6 +99,7 @@ func (p *RouterProber) Probe(ctx context.Context) Router {
 		slog.String("vendor", out.Vendor),
 		slog.String("model", out.Model),
 		slog.Bool("banner_read", out.Banner != ""),
+		slog.String("upnp_status", string(out.UPnPStatus)),
 		slog.Bool("mapping_available", out.PortMappingAvailable),
 		slog.Bool("wan_address_known", out.WANAddress.IsValid()),
 	)
@@ -110,7 +111,13 @@ func (p *RouterProber) Probe(ctx context.Context) Router {
 func (p *RouterProber) queryIGD(ctx context.Context, out *Router) {
 	loc, from, err := p.discover(ctx)
 	if err != nil {
-		p.Log.Debug("no igd discovered", slog.Any("err", err))
+		// Info, not debug. This is the single most asked question about this
+		// step -- "why isn't UPnP working for me?" -- and at debug level the
+		// answer was absent from every normal run's log.
+		out.UPnPStatus = UPnPNoReply
+		p.Log.Info("no router answered the automatic port opening request",
+			slog.String("meaning", "the setting is off, or the request never reached the router"),
+			slog.Any("err", err))
 		return
 	}
 	// A router that answered SSDP is reachable, and the reply source is its
@@ -122,7 +129,9 @@ func (p *RouterProber) queryIGD(ctx context.Context, out *Router) {
 
 	desc, err := p.describe(ctx, loc)
 	if err != nil {
-		p.Log.Debug("igd description failed", slog.Any("err", err))
+		out.UPnPStatus = UPnPNoDescription
+		p.Log.Info("the router answered but would not describe itself",
+			slog.String("location", loc), slog.Any("err", err))
 		return
 	}
 	out.Vendor = strings.TrimSpace(desc.Device.Manufacturer)
@@ -130,7 +139,12 @@ func (p *RouterProber) queryIGD(ctx context.Context, out *Router) {
 
 	ctrl, svcType := findWANService(&desc.Device, loc)
 	if ctrl == "" {
-		p.Log.Debug("igd has no WAN connection service")
+		// The router speaks UPnP but not the port-opening half of it. Usually
+		// this is a "UPnP" switch that turns on media sharing and nothing else.
+		out.UPnPStatus = UPnPNoPortService
+		p.Log.Info("the router speaks UPnP but offers no port opening service",
+			slog.String("vendor", out.Vendor), slog.String("model", out.Model),
+			slog.String("meaning", "the UPnP setting that is on may be the media sharing one"))
 		return
 	}
 	out.ControlURL, out.ServiceType = ctrl, svcType
@@ -138,6 +152,7 @@ func (p *RouterProber) queryIGD(ctx context.Context, out *Router) {
 	// may still be refused, which is why task 5 verifies externally rather
 	// than trusting this.
 	out.PortMappingAvailable = true
+	out.UPnPStatus = UPnPAvailable
 
 	if addr, err := p.externalAddress(ctx, ctrl, svcType); err == nil {
 		out.WANAddress = addr

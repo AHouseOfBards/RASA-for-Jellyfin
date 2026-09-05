@@ -167,6 +167,15 @@ type PortView struct {
 	// AdminURL is the router's own settings page, so the screen can link to it
 	// rather than describing how to reach it.
 	AdminURL string `json:"admin_url,omitempty"`
+	// UPnPProblem says why automatic port opening is unavailable, when RASA
+	// can tell the difference. Empty when it is available or when nothing more
+	// specific than "off" is known.
+	//
+	// "Turn on UPnP" is the wrong advice for a router that already has it on
+	// and simply does not offer the port-opening half, which is common: many
+	// routers label media sharing "UPnP". Telling that user to enable a
+	// setting they already enabled is how a screen loses someone's trust.
+	UPnPProblem string `json:"upnp_problem,omitempty"`
 	// RetryOutcome says what the last Test again actually did, and in
 	// particular whether turning UPnP on took effect.
 	//
