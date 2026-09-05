@@ -53,13 +53,16 @@ off. That is the only test that proves it works from outside your home.
 
 ## Before you rely on it
 
-This is version 0.7. It has been run start to finish on Windows against a real Jellyfin
-server, and it works. Some things have not been tested yet:
+This is version 0.8, and it is intended to be the last beta. It has been run start to
+finish on Windows against a real Jellyfin server, and it works. Some things have not been
+tested yet:
 
 * Nobody has run the installer on a clean machine.
 * Reaching a server from outside has never been tested successfully. The code is there,
   but it has only ever run on a network where opening a port is not possible.
 * Linux has never been tested on real hardware.
+* If your Jellyfin uses a custom base path, that support is new in this version and has
+  been tested against a real proxy but not against a real Jellyfin.
 
 If you try it, please [open an issue](https://github.com/AHouseOfBards/RASA-for-Jellyfin/issues)
 and say what happened, whether it worked or not. That is the most useful thing you can do
