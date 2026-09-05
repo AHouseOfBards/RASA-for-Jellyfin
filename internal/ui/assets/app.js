@@ -441,9 +441,9 @@ function renderRouterChoice(p) {
   const identified = p.router_guessed || p.router_chosen;
   guess.hidden = !identified;
   if (p.router_guessed) {
-    text.textContent = `These steps are for ${p.router_name}, which is what your router seems to be.`;
+    text.textContent = `RASA thinks your router is ${p.router_name}.`;
   } else if (p.router_chosen) {
-    text.textContent = `These steps are for ${p.router_name}, which is what you chose.`;
+    text.textContent = `Showing steps for ${p.router_name}.`;
   }
 
   const options = p.router_options || [];
@@ -452,7 +452,7 @@ function renderRouterChoice(p) {
 
   label.textContent = identified
     ? "Wrong one? Pick your router:"
-    : "RASA couldn't work out which router you have, so these are the general steps. Pick yours for the exact menu path:";
+    : "RASA couldn't identify your router. Pick it for exact steps:";
 
   const select = document.getElementById("port-router-select");
   // Rebuilt on every render, so the selection has to be restored from the
@@ -486,7 +486,7 @@ function renderPort() {
   if (p.retry_outcome) {
     document.getElementById("port-retry-text").textContent = p.retry_outcome;
     document.getElementById("port-retry-time").textContent = p.checked_at
-      ? `Checked at ${p.checked_at}.`
+      ? `Last checked at ${p.checked_at}.`
       : "";
   }
 
@@ -499,7 +499,7 @@ function renderPort() {
     } else if (p.open) {
       lede.textContent = "Your router opened the port on its own. Nothing for you to do.";
     } else {
-      lede.textContent = "Your router didn't open the port, and RASA couldn't work out how to guide you through it. You can try again, or continue without it.";
+      lede.textContent = "Your router didn't open the port, and there are no specific steps for it. Try again, or continue without it.";
     }
     return;
   }
@@ -508,7 +508,7 @@ function renderPort() {
   document.getElementById("port-title").textContent = "One thing to do on your router";
   lede.textContent = p.open && !p.permanent
     ? "Your router opened the port, but it will forget when it restarts. Making it permanent takes a minute."
-    : "Your router won't open the port on its own, so it needs one rule adding. Everything you need is below.";
+    : "Your router needs one rule adding. Everything you need is below.";
 
   document.getElementById("port-router").textContent = p.router_name || "Your router";
 
@@ -557,7 +557,7 @@ const DONE_COPY = {
   },
   inconclusive: {
     title: "Setup is finished",
-    lede: "Everything is configured. Whether it can be reached from outside couldn't be checked from this network. See below.",
+    lede: "Everything is set up. This network can't check whether it's reachable from outside. See below.",
   },
   unreachable: {
     title: "Setup is finished, but nothing can reach it yet",

@@ -37,12 +37,10 @@
     <section class="screen" data-screen="welcome">
       <h1 id="welcome-title">Let's make your server reachable from anywhere</h1>
       <p class="lede" id="welcome-lede">
-        RASA gives your Jellyfin server its own web address and a proper security
-        certificate, sets up your router, and tells Jellyfin about it. There are
-        six steps and you only need to be at the keyboard for three of them.
-        It usually takes about five minutes, though one step waits on a
-        certificate authority and can occasionally take longer on its own.
-        You'll be told when it needs you again.
+        RASA gives your Jellyfin server its own web address and security
+        certificate, sets up your router, and tells Jellyfin about it. Six steps,
+        three of which need you at the keyboard. It usually takes about five
+        minutes, and you'll be told when it needs you again.
       </p>
       <!-- Said before setup starts rather than diagnosed afterwards. A VPN
            changes the address the outside world sees this connection at, and
@@ -52,9 +50,8 @@
            address report a false positive. -->
       <div class="notice" id="vpn-notice">
         <strong>Turn off any VPN first.</strong>
-        A VPN changes the address the internet sees you at, and that is the
-        address your server will be published under. Disconnect it before you
-        start, and leave it off until setup finishes.
+        Your server is published at the address the internet sees you at, so a
+        VPN would publish the wrong one. Leave it off until setup finishes.
       </div>
       <div class="notice" id="repair-notice" hidden>
         <strong>You've set this up before.</strong>
@@ -123,13 +120,13 @@
     <section class="screen" data-screen="dynu">
       <h1>Create your free Dynu account</h1>
       <p class="lede">
-        Your web address comes from Dynu, who give them away free. The account is
-        yours, not RASA's. Nobody else can change or take your address.
+        Your web address comes from Dynu, free. The account is yours, not RASA's,
+        so nobody else can change or take your address.
       </p>
       <ol class="numbered">
         <li>Create a Dynu account. It asks for an email address and a password.</li>
-        <li>Come back here and open the API key page. The second button below
-            goes straight to it, so you don't have to find it in the menus.</li>
+        <li>Come back here and open the API key page with the second button
+            below.</li>
         <li>Copy the key and paste it in the box. RASA checks it as soon as you do.</li>
       </ol>
       <div class="actions">
@@ -220,9 +217,9 @@
            link either way, and the other names the setting hides behind. -->
       <div class="notice" id="port-upnp" hidden>
         <p>
-          <strong>Your router can probably do this for you.</strong>
-          Routers can open ports by themselves using a setting called
-          <strong>UPnP</strong>. Yours has it switched off, or does not have it.
+          <strong>Your router can do this for you.</strong>
+          The setting is called <strong>UPnP</strong>. Turn it on, save, then
+          choose Test again and you can skip the steps below.
         </p>
         <!-- Why it is unavailable, when RASA can tell. "Turn UPnP on" is the
              wrong advice for a router that has it on and simply does not offer
@@ -230,15 +227,13 @@
         <p id="port-upnp-problem" hidden></p>
         <p id="port-upnp-where"></p>
         <p id="port-upnp-names" hidden>
-          It may be written <strong>UPnP</strong>, <strong>Universal Plug and
+          It may be listed as <strong>UPnP</strong>, <strong>Universal Plug and
           Play</strong>, <strong>UPnP IGD</strong> or <strong>NAT-PMP</strong>,
-          and it usually sits under Advanced, NAT, Firewall or Network settings.
+          usually under Advanced, NAT, Firewall or Network settings.
         </p>
         <p>
-          Turn it on, save, then choose <strong>Test again</strong> — RASA will
-          open the port itself and you can skip the steps below. Some routers,
-          especially ones supplied by an internet provider, do not offer it at
-          all. If you cannot find it, the steps below do the same job by hand.
+          Not every router has it. If you can't find it, the steps below do the
+          same job.
         </p>
       </div>
       <div id="port-guide" hidden>
@@ -249,7 +244,7 @@
              sends someone hunting for a menu their model does not have. -->
         <p class="hint" id="port-guess" hidden>
           <span id="port-guess-text"></span>
-          <button class="link" type="button" data-action="port-generic">Not my router — show general steps</button>
+          <button class="link" type="button" data-action="port-generic">Not my router</button>
         </p>
         <!-- The way forward when identification failed, which it does whenever
              the router will not say what it is: UPnP off, an admin page that
@@ -287,12 +282,11 @@
     <!-- Journey step 10 and 11 -->
     <section class="screen" data-screen="setup">
       <h1>Setting everything up</h1>
-      <p class="lede">Most of this is quick. The security certificate is issued
-      by a certificate authority and is usually done in seconds, but it can take
-      several minutes on its own. The line below keeps counting while it works,
-      and nothing is wrong until it says so.</p>
-      <p class="hint">You can close this tab or walk away; setup keeps running
-      either way. The browser tab title will say when it's finished.</p>
+      <p class="lede">Most of this is quick. The security certificate usually
+      takes seconds, but can take several minutes. The line below keeps counting
+      while it works.</p>
+      <p class="hint">You can close this tab or walk away. Setup keeps running,
+      and the tab title says when it's finished.</p>
       <ul class="steps" id="setup"></ul>
     </section>
 
@@ -338,19 +332,17 @@
           </figure>
         </div>
       </div>
-      <p class="hint" id="qr-hint" hidden>Turn Wi-Fi off on your phone first. Reaching
-      your server over mobile data is the one test that proves it works from outside
-      your home network.</p>
+      <p class="hint" id="qr-hint" hidden>Turn Wi-Fi off on your phone first.
+      Mobile data is the only test that proves it works from outside your home.</p>
       <p class="advice" id="reach-note"></p>
       <div class="warnings" id="warnings" hidden>
         <h2>Worth knowing</h2>
         <ul id="warning-list"></ul>
       </div>
       <div class="notice">
-        <strong>Everything you need is saved.</strong>
+        <strong>Everything is saved.</strong>
         Your address, your port forwarding details and where to find the logs are
-        written to <code id="recovery-path"></code>. Keep it. RASA doesn't need to
-        stay installed, but your remote access keeps working.
+        written to <code id="recovery-path"></code>. Keep it.
       </div>
       <!-- Removing the setup app is not removing remote access, and the two
            must not read alike. This one leaves everything working, which is
@@ -358,9 +350,8 @@
            address is on screen, so the user can test it first. -->
       <div class="notice" id="uninstall-offer" hidden>
         <strong>Finished with RASA?</strong>
-        Test your address first, on a phone with Wi-Fi turned off. Once you are
-        happy it works you can remove this setup app: your remote access keeps
-        running without it.
+        Test your address first, on a phone with Wi-Fi turned off. Once it works
+        you can remove the setup app. Your remote access keeps running without it.
         <p class="hint" id="uninstall-hint" hidden></p>
         <div class="actions">
           <button class="secondary" data-action="uninstall" id="uninstall-button">Remove the setup app</button>

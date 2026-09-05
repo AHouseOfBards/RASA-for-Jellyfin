@@ -69,7 +69,7 @@ func Render(info Info) string {
 	fmt.Fprintf(&b, "  This computer: %s\n\n", runtime.GOOS)
 
 	b.WriteString("  You can uninstall the RASA app. Remote access keeps working\n")
-	b.WriteString("  without it — this file explains what was left behind.\n\n")
+	b.WriteString("  without it. This file explains what was left behind.\n\n")
 
 	// What is still installed. Someone deciding whether to remove things
 	// needs to know what they are looking at.
@@ -132,8 +132,8 @@ func Render(info Info) string {
 	fmt.Fprintf(&b, "  Address sync:  %s\n", info.Layout.SyncLog())
 	fmt.Fprintf(&b, "  Health check:  %s\n", info.Layout.LastSyncFile())
 	fmt.Fprintf(&b, "  Setup record:  %s\n\n", info.Layout.StateFile())
-	b.WriteString("  These are kept on purpose when RASA is uninstalled — they are\n")
-	b.WriteString("  what makes a problem diagnosable later.\n\n")
+	b.WriteString("  These are kept when RASA is uninstalled, so a problem months\n")
+	b.WriteString("  from now can still be worked out.\n\n")
 
 	b.WriteString(rule + "\n")
 	b.WriteString("  Report problems: https://github.com/AHouseOfBards/RASA-for-Jellyfin/issues\n")

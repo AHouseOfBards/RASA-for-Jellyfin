@@ -983,17 +983,17 @@ type portRetry struct {
 func (r *portRetry) outcome(mapped bool) string {
 	switch {
 	case mapped && !r.offeredBefore && r.offeredNow:
-		return "Your router is now offering to open ports by itself, and it opened one. There is one thing left to do below to make it permanent."
+		return "Your router is now opening ports by itself. One thing left below to make it permanent."
 	case mapped:
 		return "Your router opened the port, but only temporarily. The steps below make it permanent."
 	case !r.offeredBefore && r.offeredNow:
-		return "Your router is now offering to open ports by itself, so the setting took effect — but it refused this request. Following the steps below will still work."
+		return "Your router is now offering to open ports, so the setting took effect, but it refused this request. The steps below still work."
 	case r.offeredBefore && !r.offeredNow:
-		return "Your router has stopped offering to open ports by itself since the last check."
+		return "Your router has stopped offering to open ports since the last check."
 	case r.offeredNow:
-		return "Your router still refused to open the port by itself. Nothing changed since the last check."
+		return "Your router still refused to open the port. Nothing has changed since the last check."
 	default:
-		return "Your router still isn't offering to open ports by itself. If you just turned UPnP on, it may not have saved, or the router may need restarting."
+		return "Your router still isn't offering to open ports. If you just turned UPnP on, it may not have saved, or the router may need restarting."
 	}
 }
 
@@ -1335,16 +1335,14 @@ func (w *Wizard) ChooseRouter(ctx context.Context, key string) error {
 func upnpProblem(s probe.UPnPStatus) string {
 	switch s {
 	case probe.UPnPNoPortService:
-		return "Your router does answer, but it does not offer to open ports. " +
-			"If you have already turned a setting called UPnP on, it is probably the media sharing one, " +
-			"which is a different feature with the same name. The one to look for may be listed as " +
-			"IGD, NAT-PMP or PCP instead."
+		return "Your router answers, but does not offer to open ports. " +
+			"If you have already turned on a setting called UPnP, it is probably the media sharing one, " +
+			"which is a different feature with the same name. Look for IGD, NAT-PMP or PCP instead."
 	case probe.UPnPNoDescription:
 		return "Your router answered but would not say what it can do, so RASA could not ask it to open a port."
 	case probe.UPnPNoReply:
-		return "Your router did not answer at all. Either the setting is off, or the request never reached it — " +
-			"which happens on guest and public wireless networks, and when this computer is on a different " +
-			"part of the network from the router."
+		return "Your router did not answer. Either the setting is off, or the request never reached it, " +
+			"which happens on guest wireless networks and when this computer is on a different part of the network."
 	}
 	return ""
 }
