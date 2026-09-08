@@ -403,12 +403,40 @@ func TestContinuingWithATemporaryOpeningSaysItIsTemporary(t *testing.T) {
 	if strings.Contains(got.Text, "not confirmed open") {
 		t.Errorf("claimed the port was never opened: %q", got.Text)
 	}
-	// It has to say when it lapses, not merely that it is temporary: the
-	// lease is a week, so "until the router restarts" understates it.
-	if !strings.Contains(got.Text, "week") {
-		t.Errorf("does not say how long the opening lasts: %q", got.Text)
+	// It has to say when it lapses, not merely that it is temporary, and the
+	// figure has to be the one the router granted. This fake grants an hour;
+	// saying "a week" here would be the week-long fallback RASA asked for
+	// rather than what came back, which is wrong in the direction that costs
+	// someone their remote access.
+	if !strings.Contains(got.Text, "about an hour") {
+		t.Errorf("does not report the lease the router actually granted: %q", got.Text)
+	}
+	if strings.Contains(got.Text, "week") {
+		t.Errorf("reported the requested fallback instead of the granted lease: %q", got.Text)
 	}
 	if !strings.Contains(got.Text, "permanent") {
 		t.Errorf("does not point at the fix: %q", got.Text)
+	}
+}
+
+// The lease shown has to be the one the router granted, not the one RASA asked
+// for. A permanent lease is requested first, and only a router that refuses it
+// gets the week-long fallback -- and it is free to grant less again. Saying "a
+// week" over a one-hour lease is wrong in the direction that costs someone
+// their remote access.
+func TestTheLeaseShownIsTheOneTheRouterGranted(t *testing.T) {
+	for _, c := range []struct {
+		seconds int
+		want    string
+	}{
+		{0, ""},
+		{3600, "about an hour"},
+		{7200, "about 2 hours"},
+		{604800, "about 7 days"},
+		{86400, "about a day"},
+	} {
+		if got := humanLease(c.seconds); got != c.want {
+			t.Errorf("humanLease(%d) = %q, want %q", c.seconds, got, c.want)
+		}
 	}
 }

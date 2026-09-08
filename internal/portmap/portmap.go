@@ -30,8 +30,18 @@ import (
 const Description = "RASA for Jellyfin"
 
 // FallbackLeaseSeconds is requested when a router refuses a permanent lease.
-// A week is long enough to be useful and short enough that a stale mapping
-// clears itself if RASA is uninstalled without cleanup.
+//
+// Seven days, and not an arbitrary choice: 604800 is the ceiling miniupnpd
+// enforces, and miniupnpd is the UPnP daemon in most consumer routers and in
+// OpenWrt. Asking for more is refused or silently clamped, so this is the
+// longest a refused-permanent mapping can be. It also happens to be short
+// enough that a stale mapping clears itself if RASA is uninstalled without
+// cleanup.
+//
+// What a router grants is read back rather than assumed. It is free to give
+// less, and anything shown to the user comes from the read-back: telling
+// someone their port is open for a week when the router granted an hour is
+// wrong in the direction that costs them remote access.
 const FallbackLeaseSeconds = 604800
 
 // Protocol values.

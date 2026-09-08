@@ -535,9 +535,10 @@ function renderPort() {
   // in before anything else on the screen makes sense.
   if (p.open) {
     document.getElementById("port-title").textContent = "Your router opened the port";
+    const lasts = p.lease_for || "a limited time";
     lede.textContent =
-      "Remote access will work once setup finishes. Your router would only open the port for a week, " +
-      "though, and sooner than that if it restarts. The steps below replace that with a permanent rule. " +
+      `Remote access will work once setup finishes. Your router only opened the port for ${lasts}, ` +
+      "though, and sooner than that if it restarts. The steps below replace it with a permanent rule. " +
       "You can carry on now and do them later, but do them.";
     document.getElementById("port-steps-heading").textContent = "To make it permanent";
   } else {

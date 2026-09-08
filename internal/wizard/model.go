@@ -176,6 +176,13 @@ type PortView struct {
 	// routers label media sharing "UPnP". Telling that user to enable a
 	// setting they already enabled is how a screen loses someone's trust.
 	UPnPProblem string `json:"upnp_problem,omitempty"`
+	// LeaseFor is how long the router actually opened the port for, in words,
+	// empty when the mapping is permanent.
+	//
+	// Taken from the read-back rather than from what RASA asked for. A
+	// permanent lease is requested first and only a router that refuses gets
+	// the week-long fallback, and a router may grant less again.
+	LeaseFor string `json:"lease_for,omitempty"`
 	// RetryOutcome says what the last Test again actually did, and in
 	// particular whether turning UPnP on took effect.
 	//

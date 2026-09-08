@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/netip"
 	"sort"
 	"strconv"
@@ -1217,6 +1218,7 @@ func (w *Wizard) showGuide(res probe.Result, d mode.Decision, mapped *state.Port
 		view.Automatic = true
 		view.Permanent = mapped.Permanent
 		view.External, view.Internal = mapped.ExternalPort, mapped.InternalPort
+		view.LeaseFor = humanLease(mapped.LeaseSeconds)
 	}
 	for _, s := range ins.Steps {
 		view.Instructions = append(view.Instructions, GuideStep{Text: s})
@@ -1263,7 +1265,8 @@ func (w *Wizard) SkipPort(ctx context.Context) error {
 		"Your router port was not confirmed open. If your server can't be reached from outside, the instructions in your recovery file will fix it."
 	if mapped != nil && !mapped.Permanent {
 		code, text = "finite_lease",
-			fmt.Sprintf("Your router opened port %d, but only for a week, and sooner than that if it restarts. Remote access will stop when it lapses. The router settings in this file replace it with a permanent rule.", mapped.ExternalPort)
+			fmt.Sprintf("Your router opened port %d, but only for %s, and sooner than that if it restarts. Remote access will stop when it lapses. The router settings in this file replace it with a permanent rule.",
+				mapped.ExternalPort, humanLease(mapped.LeaseSeconds))
 	}
 
 	w.mu.Lock()
@@ -1338,6 +1341,34 @@ func (w *Wizard) ChooseRouter(ctx context.Context, key string) error {
 		slog.String("router", entry.Name))
 	w.showGuide(res, d, w.currentMapping())
 	return nil
+}
+
+// humanLease says how long a mapping lasts, in words.
+//
+// The read-back value, never the value RASA asked for. Those differ: a
+// permanent lease is requested first and only a router that refuses it gets
+// the week-long fallback, and a router is free to grant something shorter
+// again. Telling someone their port is open for a week when the router
+// granted an hour is wrong in the direction that costs them remote access.
+func humanLease(seconds int) string {
+	if seconds <= 0 {
+		return ""
+	}
+	if seconds < 24*3600 {
+		return plural(int(math.Round(float64(seconds)/3600)), "hour")
+	}
+	return plural(int(math.Round(float64(seconds)/86400)), "day")
+}
+
+func plural(n int, unit string) string {
+	if n <= 1 {
+		// Spelled out rather than derived. "An hour" takes "an" despite
+		// starting with a consonant, so a first-letter rule gets it wrong, and
+		// there are only ever two units here.
+		article := map[string]string{"hour": "an", "day": "a"}[unit]
+		return "about " + article + " " + unit
+	}
+	return fmt.Sprintf("about %d %ss", n, unit)
 }
 
 // upnpProblem turns how far the UPnP conversation got into the sentence that
