@@ -65,10 +65,11 @@ Three things must keep working forever, and none of them can be owned by RASA:
 | TLS termination and proxying | It *is* the remote access | **Caddy**, installed as an OS service |
 | Certificate renewal | Certificates expire at 90 days | **Caddy** — renews itself natively via DNS-01 |
 | DDNS address sync | The WAN address changes without warning | **Scheduled task** calling Dynu's update endpoint |
+| Port mapping renewal | A leased UPnP mapping lapses within a week | Same scheduled task, re-adding the mapping every run |
 
 Caddy covers two of three by itself, which is what makes the disposable model practical. The third reduces to a scheduled HTTP request — Dynu's update endpoint uses the requesting address when none is supplied, so it is one authenticated call on a timer. No daemon.
 
-> ⚠️ **The one thing that does not survive cleanly.** UPnP mappings are leases, not settings. RASA requests a permanent lease (IGD duration `0`) and verifies what was granted, but many routers cap it and most drop mappings on reboot. A **manual static forward is the more durable ending** — a stored router setting, not a lease. UPnP stays the default because it costs the user nothing; where the lease is finite, RASA offers to convert.
+> ⚠️ **UPnP mappings are leases, not settings.** RASA requests a permanent one (IGD duration `0`) and verifies what was granted, but many routers cap it and most drop mappings on reboot. That used to make a successful setup a week-long trial, so the scheduled task now re-adds the mapping every run and the health file reports on it. A **manual static forward is still the more durable ending** — a stored router setting survives without anything renewing it, including RASA's own scheduled task being disabled — so where the lease is finite RASA offers to convert, but no longer depends on the user doing it.
 
 ---
 
@@ -190,6 +191,10 @@ The menu path is the smaller half. The values are what users get wrong, and RASA
 | Internal and external port | The chosen listener port — 443, or 8443 on fallback |
 | Protocol | TCP |
 | Service name | A suggested label, recognisable in a year |
+
+> 🔴 **An automatic port opening has to be renewed, or it is a week-long trial.** A router that refuses a permanent mapping grants a lease instead, and the longest lease UPnP can give is 604800 seconds: that is the ceiling miniupnpd enforces, and miniupnpd is the UPnP daemon in most consumer routers. Nothing renewed it, so setup could succeed completely and remote access stop seven days later — invisibly, because the health check watches the address and the certificate and neither changes when a router drops a mapping. The address syncer renews it every run (`internal/portkeep`), and the health file now carries a third check for it.
+>
+> Three rules make that safe. **Rediscover everything**: the events this survives are the ones that invalidate what was remembered, since a restarted router commonly moves the port it serves its description from and a DHCP renewal moves this machine's own address — a mapping renewed against a stale client address points a stranger's traffic at whatever holds it now. **Never overwrite a mapping that is not ours**: a port pointing at another device is reported, not taken. **Never let renewal break the syncer**: keeping the address current and reporting health are the first two jobs and must happen whatever the router is doing, which also means a missing Dynu credential must not stop the port renewal — that used to return early and take the health file down with it, in exactly the situation where the user most needed it.
 
 > 🔴 **"Turn UPnP on" needs a where, not a hand-wave.** When the router never offered automatic mapping, switching the setting on skips this whole screen — the single most valuable thing RASA can say here. Saying it is "usually under the router's advanced or network settings" was reported as no help at all in finding it. Give the catalogue's verified path for that model, the admin page as a link either way, the other names the setting goes by (UPnP, Universal Plug and Play, UPnP IGD, NAT-PMP), and the honest caveat that ISP-supplied routers often do not have it. `upnpPath` is optional and carries its own `upnpSource`: a menu path nobody checked reads exactly as confidently as one that was, and here a wrong path costs more than a missing one, because it is offered as the way to avoid the manual guide entirely.
 

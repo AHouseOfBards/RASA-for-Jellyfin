@@ -101,6 +101,12 @@ type PortMapping struct {
 	Permanent bool `json:"permanent"`
 	// LeaseSeconds is 0 for a permanent mapping.
 	LeaseSeconds int `json:"lease_seconds,omitempty"`
+	// InternalClient is the address the mapping points at. Recorded because
+	// DHCP moves it, and a renewal has to notice when it has.
+	InternalClient string `json:"internal_client,omitempty"`
+	// RenewedAt is when the address syncer last confirmed the mapping. A stale
+	// value here is how a lapsed mapping becomes visible after the fact.
+	RenewedAt time.Time `json:"renewed_at,omitempty"`
 }
 
 // Warning is something that succeeded but will bite later.

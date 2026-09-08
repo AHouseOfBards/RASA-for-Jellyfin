@@ -38,6 +38,45 @@ func CheckAddress(syncErr error) Check {
 	return c
 }
 
+// PortStatus is what the renewal attempt found, in terms this package can
+// render without importing the one that did it.
+type PortStatus struct {
+	// Applicable is false when there is no automatic mapping: a manual
+	// forward, or a setup that never opened a port. No check is produced.
+	Applicable bool
+	OK         bool
+	Detail     string
+	// Advice is shown only when it failed.
+	Advice string
+}
+
+// CheckPortMapping reports whether the router is still forwarding the port.
+//
+// This is the check that was missing, and its absence had a specific cost: a
+// router that refuses a permanent mapping gets a lease of at most a week, so a
+// setup that worked perfectly stopped working seven days later while this file
+// went on saying everything was fine. The address and the certificate are both
+// still correct at that point. Nothing else looks at the router.
+func CheckPortMapping(s PortStatus) (Check, bool) {
+	if !s.Applicable {
+		return Check{}, false
+	}
+	c := Check{Name: "Your router is letting connections in"}
+	if s.OK {
+		c.OK = true
+		c.Detail = s.Detail
+		return c, true
+	}
+	c.Detail = s.Detail
+	c.Advice = s.Advice
+	if c.Advice == "" {
+		c.Advice = "Remote access will stop working from outside your home until this is " +
+			"fixed. The router settings in your recovery notes add the rule by hand, which " +
+			"does not lapse."
+	}
+	return c, true
+}
+
 // CheckProxy connects to the local proxy and reads the certificate it is
 // serving.
 //

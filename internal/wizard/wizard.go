@@ -1106,6 +1106,11 @@ func (w *Wizard) openPort(ctx context.Context) error {
 				Method:       "upnp",
 				Permanent:    out.Mapping.Permanent(),
 				LeaseSeconds: out.Mapping.LeaseSeconds,
+				// Recorded so the address syncer can tell, months later,
+				// whether DHCP has moved this machine out from under the
+				// mapping it is renewing.
+				InternalClient: res.Host.LANAddress.String(),
+				RenewedAt:      time.Now().UTC(),
 			}
 			w.mu.Lock()
 			w.st.PortMapping = mapped

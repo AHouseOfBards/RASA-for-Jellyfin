@@ -151,6 +151,23 @@ func (p *RouterProber) Probe(ctx context.Context) Router {
 // queryIGD fills in everything that only UPnP can tell us. Every failure is
 // soft: a router that does not speak IGD leaves out untouched.
 func (p *RouterProber) queryIGD(ctx context.Context, out *Router) {
+	p.discoverService(ctx, out)
+	if out.ControlURL == "" {
+		return
+	}
+	if addr, err := p.externalAddress(ctx, out.ControlURL, out.ServiceType); err == nil {
+		out.WANAddress = addr
+	} else {
+		p.Log.Debug("GetExternalIPAddress failed", slog.Any("err", err))
+	}
+}
+
+// discoverService finds the router's port-mapping service and identifies it.
+//
+// Split from queryIGD because the address syncer needs exactly this and none
+// of the rest: asking a router for its external address every ten minutes for
+// the life of the machine buys nothing once setup has finished.
+func (p *RouterProber) discoverService(ctx context.Context, out *Router) {
 	found, err := p.discover(ctx, out.Gateway)
 	if err != nil {
 		// Info, not debug. This is the single most asked question about this
@@ -227,13 +244,6 @@ func (p *RouterProber) queryIGD(ctx context.Context, out *Router) {
 	// than trusting this.
 	out.PortMappingAvailable = true
 	out.UPnPStatus = UPnPAvailable
-
-	if addr, err := p.externalAddress(ctx, ctrl, svcType); err == nil {
-		out.WANAddress = addr
-	} else {
-		p.Log.Debug("GetExternalIPAddress failed", slog.Any("err", err))
-	}
-
 }
 
 // discover searches for gateways and returns everything that answered, best
